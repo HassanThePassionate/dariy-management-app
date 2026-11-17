@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   X,
   Send,
@@ -99,6 +99,7 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
   const [stage, setStage] = useState<'form' | 'slip'>('form');
   const [amount, setAmount] = useState('');
   const [paidNow, setPaidNow] = useState(0);
+  const [initialReceived, setInitialReceived] = useState(received);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receiptNumber, setReceiptNumber] = useState('');
@@ -113,7 +114,20 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
     account_number: '02090111954760',
   });
 
-  const payable = carry + bill - received;
+  const totalBill = (carry || 0) + (bill || 0);
+  const payableBefore = Math.max(0, totalBill - (received || 0));
+
+  const isPaymentReceipt = mode === 'pay' && stage === 'slip';
+
+  // Accurate calculation that avoids doubling:
+  // When in slip mode right after paying, totalReceived = initialReceived + paidNow.
+  // Otherwise, use received prop.
+  const currentTotalReceived = isPaymentReceipt && paidNow > 0
+    ? (initialReceived + paidNow)
+    : (received || 0);
+
+  const currentRemaining = totalBill - currentTotalReceived;
+
   const issueDateStr = formatIssueDate(new Date(), ur);
   const currentTimeStr = formatTime(new Date());
 
@@ -124,6 +138,7 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
     setAmount('');
     setPaidNow(0);
     setError('');
+    setInitialReceived(received);
     setReceiptNumber(
       `RCP-${customerId || '0'}-${Math.floor(Date.now() / 1000).toString().slice(-4)}`
     );
@@ -148,8 +163,7 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
   if (!isOpen) return null;
 
   const entered = parseFloat(amount) || 0;
-  const remainingPreview = payable - entered;
-  const isPaymentReceipt = mode === 'pay' && stage === 'slip';
+  const remainingPreview = payableBefore - entered;
 
   const handlePay = async () => {
     setError('');
@@ -182,17 +196,25 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
         `${ur ? 'گاہک کا نام' : 'Customer'}: ${customerName}`,
         `${ur ? 'مہینہ' : 'Month'}: ${monthLabel}`,
         '--------------------------------',
-        `💵 *${ur ? 'ابھی موصول شدہ رقم' : 'Amount Paid Now'}: Rs. ${money(paidNow)}*`,
-        `${ur ? 'کل وصولی اس ماہ' : 'Total Received This Month'}: Rs. ${money(received + paidNow)}`,
-        `📌 *${ur ? 'باقی بقایا رقم' : 'Remaining Balance Due'}: Rs. ${money(payable - paidNow)}*`,
+        `🧾 *${ur ? 'کل بل بنتا تھا' : 'Total Bill'}: Rs. ${money(totalBill)}*`,
+        `💵 *${ur ? 'ابھی ادا شدہ رقم' : 'Amount Paid Now'}: Rs. ${money(paidNow)}*`,
+        `${ur ? 'کل وصولی اس ماہ' : 'Total Received This Month'}: Rs. ${money(currentTotalReceived)}`,
+        `📌 *${ur ? 'باقی واجب الادا رقم' : 'Remaining Balance Due'}: Rs. ${money(currentRemaining > 0 ? currentRemaining : 0)}*`,
         '--------------------------------',
-        ur ? '✓ رقم موصول ہو گئی ہے۔ شکریہ!' : '✓ Payment received. Thank you!',
+        currentRemaining <= 0
+          ? (ur ? `✓ آپ کا کل بل Rs. ${money(totalBill)} بنتا تھا، جو مکمل ادا ہو چکا ہے۔ کھاتہ مکمل ادا شدہ (Fully Cleared) ہے۔ شکریہ!` : '✓ Bill is fully cleared. Thank you!')
+          : (ur ? `⚠️ آپ کا کل بل Rs. ${money(totalBill)} بنتا تھا، آپ نے Rs. ${money(paidNow)} ادا کیا ہے، اور باقی Rs. ${money(currentRemaining)} واجب الادا ہے۔` : `⚠️ Remaining balance due: Rs. ${money(currentRemaining)}`),
+        '--------------------------------',
         `*${settings.shop_title}* - ${settings.phone}`,
       ];
       return lines.join('\n');
     }
 
     // Monthly Bill message
+    const billRemaining = totalBill - received;
+    const isPaid = billRemaining <= 0 && (totalBill > 0 || received > 0);
+    const isPartial = received > 0 && billRemaining > 0;
+
     const days = Object.keys(dayEntries)
       .map(Number)
       .sort((a, b) => a - b)
@@ -211,19 +233,31 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
       `🥛 *${ur ? 'کل دودھ' : 'Total Milk'}: ${qty(liters)} Ltr*`,
       `💰 *${ur ? 'ریٹ فی لیٹر' : 'Rate / Ltr'}: Rs. ${rate}/L*`,
       `🧾 ${ur ? 'اس ماہ کا بل' : 'This Month Bill'}: Rs. ${money(bill)}`,
-      `⏳ ${ur ? 'سابقہ بقایا جات' : 'Previous Balance'}: Rs. ${money(carry)}`,
-      received > 0 ? `💵 ${ur ? 'وصول شدہ' : 'Already Received'}: Rs. ${money(received)}` : '',
+      carry !== 0 ? `⏳ ${ur ? 'سابقہ بقایا' : 'Previous Balance'}: Rs. ${money(carry)}` : '',
+      `✨ *${ur ? 'کل بل بنتا تھا' : 'TOTAL BILL'}: Rs. ${money(totalBill)}*`,
+      received > 0 ? `💵 ${ur ? 'وصول شدہ رقم' : 'Amount Received'}: Rs. ${money(received)}` : '',
       '--------------------------------',
-      `✨ *${ur ? 'کل واجب الادا رقم' : 'TOTAL PAYABLE'}: Rs. ${money(payable)}*`,
+      isPaid
+        ? `✅ *${ur ? 'یہ بل مکمل ادا ہو چکا ہے (FULLY PAID)' : 'FULLY PAID'}*`
+        : `📌 *${ur ? 'باقی واجب الادا رقم' : 'REMAINING BALANCE DUE'}: Rs. ${money(billRemaining)}*`,
       '--------------------------------',
-      `⚠️ *${ur ? 'نوٹ: بل ہر ماہ کی 5 تاریخ تک ادا کر دیں تاکہ دودھ کی فراہمی بلا تعطل جاری رہ سکے۔' : 'Note: Please pay by 5th of the month to ensure uninterrupted milk supply.'}*`,
-      '',
-      `🏦 *${ur ? 'آنلائن ادائیگی کی تفصیلات' : 'Online Bank Transfer Details'}:*`,
-      `${ur ? 'بینک کا نام' : 'Bank'}: ${settings.bank_name}`,
-      `${ur ? 'اکاؤنٹ ٹائٹل' : 'Title'}: ${settings.account_title}`,
-      `${ur ? 'اکاؤنٹ نمبر' : 'Account/IBAN'}: ${settings.account_number}`,
-      `📲 *${ur ? 'رقم ٹرانسفر کے بعد سکرین شاٹ اس نمبر پر بھیجیں' : 'Send transfer screenshot to'}: ${settings.owner_name} (${settings.phone})*`,
+      isPaid
+        ? (ur ? `✓ آپ کا کل بل Rs. ${money(totalBill)} بنتا تھا، جو مکمل ادا ہو چکا ہے۔ کوئی بقایا واجب الادا نہیں ہے۔ شکریہ!` : '✓ Bill is fully cleared. Thank you!')
+        : isPartial
+        ? (ur ? `⚠️ آپ کا کل بل Rs. ${money(totalBill)} بنتا تھا، آپ نے Rs. ${money(received)} ادا کیا ہے، اور باقی Rs. ${money(billRemaining)} واجب الادا ہے۔` : `⚠️ Partially paid. Remaining balance: Rs. ${money(billRemaining)}`)
+        : (ur ? '⚠️ *نوٹ: بل ہر ماہ کی 5 تاریخ تک ادا کر دیں تاکہ دودھ کی فراہمی بلا تعطل جاری رہ سکے۔*' : 'Note: Please pay by 5th of the month to ensure uninterrupted milk supply.'),
     ].filter(Boolean);
+
+    if (billRemaining > 0) {
+      lines.push(
+        '',
+        `🏦 *${ur ? 'آنلائن ادائیگی کی تفصیلات' : 'Online Bank Transfer Details'}:*`,
+        `${ur ? 'بینک کا نام' : 'Bank'}: ${settings.bank_name}`,
+        `${ur ? 'اکاؤنٹ ٹائٹل' : 'Title'}: ${settings.account_title}`,
+        `${ur ? 'اکاؤنٹ نمبر' : 'Account/IBAN'}: ${settings.account_number}`,
+        `📲 *${ur ? 'رقم ٹرانسفر کے بعد سکرین شاٹ اس نمبر پر بھیجیں' : 'Send transfer screenshot to'}: ${settings.owner_name} (${settings.phone})*`
+      );
+    }
 
     if (days) {
       lines.push('', `📅 ${ur ? 'روزانہ دودھ کی تفصیل (دن:لیٹر)' : 'Daily Milk Breakdown (day:ltr)'}:`, days);
@@ -305,18 +339,24 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                   <span className="text-slate-500">{ur ? 'اس ماہ کا بل' : 'This Month Bill'}</span>
                   <span className="font-bold text-slate-700">Rs. {money(bill)}</span>
                 </div>
+                {carry !== 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-500">{ur ? 'پچھلا بقایا' : 'Previous Balance'}</span>
+                    <span className="font-bold text-amber-700">Rs. {money(carry)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">{ur ? 'پچھلا بقایا' : 'Previous Balance'}</span>
-                  <span className="font-bold text-amber-700">Rs. {money(carry)}</span>
+                  <span className="text-slate-500">{ur ? 'کل بل بنتا تھا' : 'Total Bill'}</span>
+                  <span className="font-black text-brand-700">Rs. {money(totalBill)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-500">{ur ? 'پہلے سے وصول' : 'Already Received'}</span>
                   <span className="font-bold text-emerald-700">Rs. {money(received)}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200 font-extrabold">
-                  <span className="text-slate-800">{ur ? 'کل واجب الادا رقم' : 'Total Payable'}</span>
-                  <span className={`text-sm ${payable > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                    Rs. {money(payable)}
+                  <span className="text-slate-800">{ur ? 'کل واجب الادا رقم' : 'Net Payable'}</span>
+                  <span className={`text-sm ${payableBefore > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    Rs. {money(payableBefore)}
                   </span>
                 </div>
               </div>
@@ -339,7 +379,7 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                   />
                   <button
                     type="button"
-                    onClick={() => setAmount(String(Math.max(0, Math.round(payable))))}
+                    onClick={() => setAmount(String(Math.max(0, Math.round(payableBefore))))}
                     className="px-4 rounded-2xl bg-emerald-50 text-emerald-700 text-xs font-black hover:bg-emerald-100 transition-colors cursor-pointer border border-emerald-200 shadow-2xs"
                   >
                     {ur ? 'پوری رقم' : 'Full'}
@@ -354,15 +394,15 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                   >
                     {remainingPreview > 0
                       ? ur
-                        ? `بقایا Rs. ${money(remainingPreview)} اگلے مہینے میں شامل ہوگا`
-                        : `Rs. ${money(remainingPreview)} will carry over`
+                        ? `بقایا Rs. ${money(remainingPreview)} واجب الادا رہے گا`
+                        : `Rs. ${money(remainingPreview)} will remain due`
                       : remainingPreview < 0
                       ? ur
-                        ? `Rs. ${money(-remainingPreview)} ایڈوانس کریڈٹ ہوگا`
+                        ? `Rs. ${money(-remainingPreview)} پیشگی ایڈوانس جمع ہوگا`
                         : `Rs. ${money(-remainingPreview)} advance balance`
                       : ur
-                      ? '✓ مکمل ادائیگی (مکمل ادا شدہ)'
-                      : '✓ Fully Paid'}
+                      ? '✓ مکمل ادائیگی (کھاتہ مکمل کلیئر ہو جائے گا)'
+                      : '✓ Fully Paid (Account will be cleared)'}
                   </p>
                 )}
               </div>
@@ -388,9 +428,10 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                 monthLabel={monthLabel}
                 issueDateStr={issueDateStr}
                 currentTimeStr={currentTimeStr}
+                totalBill={totalBill}
                 paidNow={paidNow}
-                received={received}
-                payable={payable}
+                totalReceived={currentTotalReceived}
+                remaining={currentRemaining}
                 settings={settings}
                 ur={ur}
               />
@@ -439,7 +480,7 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                 bill={bill}
                 carry={carry}
                 received={received}
-                payable={payable}
+                payable={totalBill - (received || 0)}
                 settings={settings}
                 ur={ur}
               />

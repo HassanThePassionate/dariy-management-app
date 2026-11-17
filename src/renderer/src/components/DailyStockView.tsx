@@ -10,13 +10,12 @@ import {
   Receipt,
   TrendingDown,
   Trash2,
-  Pencil,
-  Save,
   Clock,
   Sparkles,
   Coins,
   TrendingUp,
   Wallet,
+  RefreshCw,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -66,16 +65,9 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
   const [profitToday, setProfitToday] = useState<number>(0);
   const [leftoverTomorrow, setLeftoverTomorrow] = useState<number>(0);
 
-  // Dahi & notes form inputs
-  const [dahiKg, setDahiKg] = useState<string>('');
-  const [dahiMilkUsed, setDahiMilkUsed] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
-  const [isSaved, setIsSaved] = useState<boolean>(false);
-
   // History records (14 days)
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [saving, setSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<string>('');
 
   const showToast = (msg: string) => {
@@ -114,10 +106,6 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
         setExpensesToday(res.expensesToday || 0);
         setProfitToday(res.profitToday || 0);
         setLeftoverTomorrow(res.leftoverTomorrow || 0);
-        setDahiKg(res.dahiKg ? String(res.dahiKg) : '');
-        setDahiMilkUsed(res.dahiMilkUsed ? String(res.dahiMilkUsed) : '');
-        setNotes(res.notes || '');
-        setIsSaved(res.isSaved || false);
       }
 
       // Load 14 days history
@@ -132,56 +120,22 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
 
   useEffect(() => {
     loadDay();
+    const handleFocus = () => loadDay();
+    window.addEventListener('focus', handleFocus);
+    const interval = setInterval(loadDay, 4000);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
   }, [loadDay]);
 
   // Available milk calculation
   const totalAvailable = yesterdayLeftover + receivedToday;
-  const dahiMilkNum = parseFloat(dahiMilkUsed) || 0;
-  const calculatedTomorrowLeftover = Math.max(
+  const effectiveTomorrowLeftover = Math.max(
     0,
-    Math.round((totalAvailable - soldToday - dahiMilkNum) * 100) / 100
+    Math.round((totalAvailable - soldToday) * 100) / 100
   );
-  const effectiveTomorrowLeftover = isSaved ? leftoverTomorrow : calculatedTomorrowLeftover;
   const tomorrowValue = Math.round(effectiveTomorrowLeftover * activeRate);
-
-  // Save stock day
-  const handleSaveStock = async () => {
-    if (!window.electronAPI) return;
-    setSaving(true);
-    try {
-      const dKg = parseFloat(dahiKg) || 0;
-      const dMilk = parseFloat(dahiMilkUsed) || 0;
-      const finalTomorrow = Math.max(0, Math.round((totalAvailable - soldToday - dMilk) * 100) / 100);
-
-      await window.electronAPI.saveStockDay({
-        date,
-        yesterdayLeftover,
-        receivedToday,
-        soldToday,
-        leftoverTomorrow: finalTomorrow,
-        rate: activeRate,
-        dahiKg: dKg,
-        dahiMilkUsed: dMilk,
-        notes: notes.trim(),
-      });
-
-      setLeftoverTomorrow(finalTomorrow);
-      setIsSaved(true);
-      showToast(
-        ur
-          ? '✓ دودھ اور دہی کا روزانہ اسٹاک کامیابی سے محفوظ ہو گیا!'
-          : '✓ Milk & Dahi Stock saved successfully!'
-      );
-
-      // Refresh history
-      const hist = await window.electronAPI.getStockHistory(14);
-      setHistory(hist || []);
-    } catch (err) {
-      console.error('Failed to save stock day:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Delete history entry
   const handleDeleteRecord = async (id: number) => {
@@ -494,20 +448,33 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
         </div>
       </div>
 
-      {/* Today’s Milk & Dahi Stock Form */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs p-5 space-y-4">
-        <div>
-          <h2 className="text-base font-extrabold text-slate-800">
-            {ur ? 'آج کا دودھ اور دہی کا اسٹاک' : 'Today’s Milk & Dahi Stock'}
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {formatDateDisplay(date, ur)} — Supplier milk is auto-added. Enter dahi made today as well.
-          </p>
+      {/* Real-Time Daily Stock Status Banner & Live Summary */}
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-indigo-50/40 rounded-2xl border border-blue-200/80 shadow-2xs p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 pb-3">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>{ur ? 'روزانہ اسٹاک کا لائیو خودکار نظام' : 'Real-Time Auto Stock Stream'}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {ur
+                ? `${formatDateDisplay(date, ur)} — سپلائرز کے صبح و شام کے دودھ اور تمام فروخت سے خودکار منسلک (کسی بٹن دبانے کی ضرورت نہیں)`
+                : `${formatDateDisplay(date, ur)} — Live linked to supplier morning & evening procurement and sales`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadDay}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-brand-600" />
+            <span>{ur ? 'تازہ کریں (Refresh)' : 'Refresh Live'}</span>
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Yesterday Leftover Stock (Auto) */}
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+          <div className="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-2xs">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700">
                 {ur ? 'پچھلا بچا ہوا اسٹاک' : 'Yesterday Leftover Stock'}
@@ -516,101 +483,59 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
                 Auto
               </span>
             </div>
-            <div className="text-lg font-black text-slate-800 mt-1">
+            <div className="text-xl font-black text-slate-800 mt-1">
               {qtyFmt(yesterdayLeftover)} Liters
             </div>
             <div className="text-[10px] text-slate-400 mt-1">
-              Automatically carried over from yesterday’s closing balance.
+              {ur ? 'گزشتہ کل کے اختتامی اسٹاک سے خودکار منتقل شدہ' : 'Automatically carried forward from yesterday closing.'}
             </div>
           </div>
 
           {/* Supplier Milk Received (Auto) */}
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80">
+          <div className="bg-white rounded-xl p-3.5 border border-slate-200/80 shadow-2xs">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700">
-                {ur ? 'آج سپلائر سے آیا' : 'Received from Suppliers'}
+                {ur ? 'آج سپلائر سے موصولہ دودھ' : 'Received from Suppliers'}
               </label>
               <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-extrabold">
                 Auto
               </span>
             </div>
-            <div className="text-lg font-black text-emerald-700 mt-1">
+            <div className="text-xl font-black text-emerald-700 mt-1">
               {qtyFmt(receivedToday)} Liters
             </div>
             <div className="text-[10px] text-slate-400 mt-1">
-              Rs. {money(receivedTotalCost || receivedToday * activeRate)} ({supplierCount} supplier(s))
+              Rs. {money(receivedTotalCost || receivedToday * activeRate)} ({supplierCount} {ur ? 'سپلائرز (صبح و شام)' : 'suppliers (all shifts)'})
             </div>
           </div>
 
-          {/* Dahi Made Today */}
-          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200/80 space-y-2">
+          {/* Leftover Balance for Tomorrow (Auto) */}
+          <div className="bg-gradient-to-br from-brand-600 to-indigo-700 text-white rounded-xl p-3.5 shadow-md">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700">
-                {ur ? 'آج دہی بنایا (کلو / لیٹر)' : 'Dahi Made Today (Kg / Ltr)'}
+              <label className="text-xs font-bold text-blue-100">
+                {ur ? 'کل کے لیے بچا ہوا اسٹاک' : 'Tomorrow Opening Stock'}
               </label>
+              <span className="px-2 py-0.5 rounded-md bg-white/20 text-white text-[10px] font-extrabold">
+                Live Balance
+              </span>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                placeholder="Dahi (Kg)"
-                value={dahiKg}
-                onChange={(e) => setDahiKg(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                placeholder="Milk used (L)"
-                value={dahiMilkUsed}
-                onChange={(e) => setDahiMilkUsed(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+            <div className="text-2xl font-black text-amber-300 mt-1">
+              {qtyFmt(effectiveTomorrowLeftover)} Liters
             </div>
-            <div className="text-[10px] text-slate-400">
-              Enter dahi produced and milk used for curd setting.
+            <div className="text-[11px] text-blue-100 font-bold mt-1">
+              Rs. {money(tomorrowValue)} (Total Available: {qtyFmt(totalAvailable)} L)
             </div>
           </div>
         </div>
 
-        {/* Daily Note (Optional) */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">
-            {ur ? 'روزانہ نوٹ (اختیاری)' : 'Daily Note (Optional)'}
-          </label>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={
-              ur
-                ? 'مثال: صبح کا دودھ خالص تھا، شام کو بارش کی وجہ سے کم سیل ہوئی'
-                : 'e.g. Morning milk was rich, sweet dahi set well, counter sales high'
-            }
-            className="w-full px-3 py-2 text-xs font-medium rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          />
-        </div>
-
-        {/* Save Milk & Dahi Stock Button */}
-        <button
-          type="button"
-          onClick={handleSaveStock}
-          disabled={saving}
-          className="w-full py-3 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
-        >
-          <Save className="w-4 h-4" />
+        <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 flex items-center gap-2 text-xs text-emerald-900 font-bold">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>
-            {saving
-              ? ur
-                ? 'محفوظ ہو رہا ہے...'
-                : 'Saving...'
-              : ur
-              ? 'دودھ اور دہی کا اسٹاک محفوظ کریں'
-              : 'Save Milk & Dahi Stock'}
+            {ur
+              ? 'سپلائر شیٹ میں درج ہونے والا دودھ (صبح یا شام) اور تمام فروخت بغیر کسی سیو بٹن کے خودکار طور پر یہاں اسٹاک میں شامل ہو رہے ہیں۔'
+              : 'All supplier milk (morning or evening) and sales automatically update this stock register live without manual saves.'}
           </span>
-        </button>
+        </div>
       </div>
 
       {/* Recent Stock History (14 days) */}
@@ -623,17 +548,6 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
             <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-extrabold">
               14 days
             </span>
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={handleDeleteAllRecords}
-                title={ur ? 'تمام ریکارڈز حذف کریں' : 'Delete All Records'}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-bold border border-rose-200 cursor-pointer transition-colors shadow-2xs ml-2"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>{ur ? 'تمام حذف کریں' : 'Delete All'}</span>
-              </button>
-            )}
           </div>
           <span className="text-[11px] text-slate-400">
             {history.length} {ur ? 'ریکارڈز' : 'records'}
@@ -650,8 +564,7 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
                 <th className="px-3 py-3 text-right text-rose-700">{ur ? 'فروخت (Sold)' : 'Total Sold'}</th>
                 <th className="px-3 py-3 text-right text-brand-800 font-extrabold">{ur ? 'بچا ہوا' : 'Leftover'}</th>
                 <th className="px-3 py-3 text-right">{ur ? 'مالیت' : 'Value (PKR)'}</th>
-                <th className="px-3 py-3">{ur ? 'دہی و نوٹس' : 'Dahi & Notes'}</th>
-                <th className="px-3 py-3 text-center w-20">{ur ? 'اختیارات' : 'Actions'}</th>
+                <th className="px-3 py-3 text-center w-20">{ur ? 'تاریخ منتخب' : 'Select'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -675,43 +588,25 @@ export const DailyStockView: React.FC<DailyStockViewProps> = ({ onNavigate }) =>
                   <td className="px-3 py-3 text-right font-extrabold text-slate-800 whitespace-nowrap">
                     Rs. {money(Math.round(row.leftover_tomorrow * (row.rate || 240)))}
                   </td>
-                  <td className="px-3 py-3 text-slate-600 max-w-[180px] truncate">
-                    {row.dahi_kg > 0 ? (
-                      <span className="inline-block px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[10px] font-bold mr-1">
-                        Dahi: {row.dahi_kg} kg
-                      </span>
-                    ) : null}
-                    <span className="text-[11px] text-slate-400">{row.notes || '-'}</span>
-                  </td>
                   <td className="px-3 py-3 text-center whitespace-nowrap">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDate(row.date);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                        title={ur ? 'لوڈ کریں' : 'Load / Edit'}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-brand-600 hover:bg-brand-50 cursor-pointer transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteRecord(row.id)}
-                        title={ur ? 'حذف کریں' : 'Delete'}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDate(row.date);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      title={ur ? 'اس تاریخ کا اسٹاک دیکھیں' : 'View this date stock'}
+                      className="px-2 py-1 rounded-lg text-brand-700 bg-brand-50 hover:bg-brand-100 text-[10px] font-bold cursor-pointer transition-colors"
+                    >
+                      {ur ? 'دیکھیں' : 'View'}
+                    </button>
                   </td>
                 </tr>
               ))}
 
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                  <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
                     {ur ? 'کوئی اسٹاک ریکارڈ موجود نہیں ہے' : 'No stock records logged'}
                   </td>
                 </tr>

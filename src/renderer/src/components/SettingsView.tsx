@@ -53,16 +53,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
   const [adminMsg, setAdminMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [adminSaving, setAdminSaving] = useState(false);
 
-  // 3. Twilio WhatsApp State
-  const [twilioSid, setTwilioSid] = useState('');
-  const [twilioToken, setTwilioToken] = useState('');
-  const [twilioFromPhone, setTwilioFromPhone] = useState('');
-  const [showTwilioToken, setShowTwilioToken] = useState(false);
-  const [twilioSaved, setTwilioSaved] = useState(false);
-  const [twilioTestTo, setTwilioTestTo] = useState('');
-  const [twilioSending, setTwilioSending] = useState(false);
-  const [twilioTestResult, setTwilioTestResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   // 4. Pricing State
   const [pricing, setPricing] = useState<{
     currentRate: number;
@@ -118,9 +108,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
       if (window.electronAPI.getSettings) {
         const s = await window.electronAPI.getSettings();
         if (s.admin_username) setAdminUsername(s.admin_username);
-        if (s.twilio_account_sid) setTwilioSid(s.twilio_account_sid);
-        if (s.twilio_auth_token) setTwilioToken(s.twilio_auth_token);
-        if (s.twilio_from_phone) setTwilioFromPhone(s.twilio_from_phone);
       }
 
       const pr = await window.electronAPI.getPricing();
@@ -209,57 +196,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
       setAdminMsg({ type: 'error', text: err.message || 'Error saving credentials' });
     } finally {
       setAdminSaving(false);
-    }
-  };
-
-  // Save Twilio Configuration
-  const handleSaveTwilio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!window.electronAPI?.setSetting) return;
-    try {
-      await window.electronAPI.setSetting('twilio_account_sid', twilioSid.trim());
-      await window.electronAPI.setSetting('twilio_auth_token', twilioToken.trim());
-      await window.electronAPI.setSetting('twilio_from_phone', twilioFromPhone.trim());
-      setTwilioSaved(true);
-      setTimeout(() => setTwilioSaved(false), 3000);
-    } catch (err) {
-      console.error('Failed to save Twilio settings:', err);
-    }
-  };
-
-  // Test Twilio Dispatch
-  const handleTestTwilio = async () => {
-    if (!twilioTestTo.trim()) {
-      return setTwilioTestResult({
-        type: 'error',
-        text: ur ? 'ٹیسٹ میسج کے لیے موبائل نمبر درج کریں' : 'Enter recipient phone for test message',
-      });
-    }
-    setTwilioSending(true);
-    setTwilioTestResult(null);
-    try {
-      const testMsg = `🥛 ${billForm.shop_title || 'Dairy Management'}\n✓ Twilio WhatsApp Integration Test Successful!\nTime: ${new Date().toLocaleTimeString()}`;
-      const res = await window.electronAPI?.sendTwilioWhatsApp({
-        to: twilioTestTo.trim(),
-        message: testMsg,
-      });
-      if (res && res.success) {
-        setTwilioTestResult({
-          type: 'success',
-          text: ur
-            ? `✓ ٹیسٹ میسج کامیابی سے بھیج دیا گیا! (SID: ${res.messageSid})`
-            : `✓ Test message dispatched successfully! (SID: ${res.messageSid})`,
-        });
-      } else {
-        setTwilioTestResult({
-          type: 'error',
-          text: res?.error || 'Twilio send failed',
-        });
-      }
-    } catch (err: any) {
-      setTwilioTestResult({ type: 'error', text: err.message || 'Twilio error' });
-    } finally {
-      setTwilioSending(false);
     }
   };
 
@@ -606,151 +542,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
             <span>{adminSaving ? (ur ? 'محفوظ ہو رہا ہے...' : 'Saving...') : ur ? 'ایڈمن لاگ ان تبدیل کریں' : 'Update Admin Credentials'}</span>
           </button>
         </form>
-      </div>
-
-      {/* 3. Twilio WhatsApp Setup */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-2xs space-y-4">
-        <div className="pb-3 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-emerald-600" />
-              <span>{ur ? 'ٹویلیو واٹس ایپ کنفیگریشن (Twilio WhatsApp Setup)' : 'Twilio WhatsApp Integration'}</span>
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {ur
-                ? 'ٹویلیو واٹس ایپ API کے ذریعے کسٹمرز اور سپلائرز کو براہ راست رسیدیں اور بل بھیجیں'
-                : 'Configure Twilio REST API credentials to dispatch WhatsApp messages, bills, and slips directly.'}
-            </p>
-          </div>
-          <span className="px-2.5 py-1 rounded-full text-[11px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Twilio API
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Credentials Form */}
-          <form onSubmit={handleSaveTwilio} className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Twilio Account SID *
-              </label>
-              <input
-                type="text"
-                value={twilioSid}
-                onChange={(e) => setTwilioSid(e.target.value)}
-                placeholder="e.g. ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                className={`${inputCls} font-mono text-xs`}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Twilio Auth Token *
-              </label>
-              <div className="relative">
-                <input
-                  type={showTwilioToken ? 'text' : 'password'}
-                  value={twilioToken}
-                  onChange={(e) => setTwilioToken(e.target.value)}
-                  placeholder="e.g. your_auth_token_here"
-                  className={`${inputCls} font-mono text-xs pr-10`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowTwilioToken(!showTwilioToken)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showTwilioToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                {ur ? 'ٹویلیو واٹس ایپ سینڈر نمبر (Sender Phone) *' : 'Twilio WhatsApp Sender Phone *'}
-              </label>
-              <input
-                type="text"
-                value={twilioFromPhone}
-                onChange={(e) => setTwilioFromPhone(e.target.value)}
-                placeholder="whatsapp:+14155238886"
-                className={`${inputCls} font-mono text-xs`}
-                dir="ltr"
-              />
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {ur
-                  ? 'سینڈ باکس کے لیے: whatsapp:+14155238886 یا آپ کا منظور شدہ Twilio WhatsApp نمبر'
-                  : 'For Twilio Sandbox: whatsapp:+14155238886 or your approved WhatsApp sender.'}
-              </p>
-            </div>
-
-            {twilioSaved && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{ur ? 'ٹویلیو ترتیبات کامیابی سے محفوظ ہو گئیں!' : 'Twilio settings saved successfully!'}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>{ur ? 'ٹویلیو ترتیبات محفوظ کریں' : 'Save Twilio Setup'}</span>
-            </button>
-          </form>
-
-          {/* Test WhatsApp Message Card */}
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
-            <div>
-              <h4 className="text-xs font-bold text-slate-800">
-                {ur ? 'ٹویلیو واٹس ایپ ٹیسٹ کریں (Send Test Message)' : 'Test Twilio WhatsApp Dispatch'}
-              </h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                {ur
-                  ? 'اپنا موبائل نمبر درج کریں تاکہ تصدیق کی جا سکے کہ ٹویلیو واٹس ایپ میسج موصول ہو رہا ہے'
-                  : 'Enter a mobile number with country code (e.g. 03210001168 or +923210001168) to verify connectivity.'}
-              </p>
-            </div>
-
-            {twilioTestResult && (
-              <div
-                className={`p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
-                  twilioTestResult.type === 'success'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    : 'bg-rose-50 border-rose-200 text-rose-700'
-                }`}
-              >
-                {twilioTestResult.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                <span>{twilioTestResult.text}</span>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                {ur ? 'موبائل نمبر (Recipient Phone)' : 'Recipient Phone Number'}
-              </label>
-              <input
-                type="text"
-                value={twilioTestTo}
-                onChange={(e) => setTwilioTestTo(e.target.value)}
-                placeholder="03210001168"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                dir="ltr"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleTestTwilio}
-              disabled={twilioSending}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
-            >
-              <Send className="w-4 h-4 text-emerald-400" />
-              <span>{twilioSending ? (ur ? 'میسج بھیجا جا رہا ہے...' : 'Sending...') : ur ? 'ٹیسٹ واٹس ایپ میسج بھیجیں' : 'Send Test WhatsApp Message'}</span>
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* 4. Active Price Per Liter & Update Milk Rate */}

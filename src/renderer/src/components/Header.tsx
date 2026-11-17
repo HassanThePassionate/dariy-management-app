@@ -30,7 +30,9 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Menu className="w-6 h-6 text-white" />
           </button>
-          <CowLogo variant="white" className="w-8 h-8 shrink-0 hidden sm:block" />
+          <div className="w-10 h-10 rounded-full bg-white p-0.5 border border-white/80 shadow-md flex items-center justify-center shrink-0 ring-2 ring-white/30" style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}>
+            <CowLogo variant="white" size={32} className="w-8 h-8 object-contain" />
+          </div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             {title}
           </h1>

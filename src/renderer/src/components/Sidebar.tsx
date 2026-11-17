@@ -142,8 +142,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Sidebar Brand Header */}
         <div className="p-4 bg-brand-600 text-white flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center p-1.5 border border-white/20">
-              <CowLogo variant="white" className="w-full h-full" />
+            <div className="w-11 h-11 rounded-full bg-white flex items-center justify-center p-0.5 border border-white/80 shadow-md shrink-0 ring-2 ring-white/30" style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}>
+              <CowLogo variant="white" size={36} className="w-9 h-9 object-contain" />
             </div>
             <div>
               <h2 className="font-bold text-base tracking-wide leading-tight">{t.appName}</h2>

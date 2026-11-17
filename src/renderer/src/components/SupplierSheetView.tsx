@@ -37,12 +37,14 @@ interface SupplierSheetViewProps {
   month?: string;
   onMonthChange?: (month: string) => void;
   onUpdate?: () => void;
+  onTotalsChange?: (totals: { liters: number; amount: number; paid: number; due: number }) => void;
 }
 
 export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
   month: controlledMonth,
   onMonthChange,
   onUpdate,
+  onTotalsChange,
 }) => {
   const { language } = useLanguage();
   const ur = language === 'ur';
@@ -64,6 +66,7 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
     account_number: '02090111954760',
   });
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingSaves = useRef<Map<string, { supplierId: number; date: string; liters: number; shift: 'Morning' | 'Evening' }>>(new Map());
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const [y, m] = month.split('-').map(Number);
@@ -76,60 +79,109 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
 
   const load = useCallback(async () => {
     if (!window.electronAPI) return;
-    setSheet(await window.electronAPI.getSupplierSheet(month, activeShift));
+    const res = await window.electronAPI.getSupplierSheet(month);
+    setSheet(res);
     try {
       const s = await window.electronAPI.getBillSettings();
       if (s) setBillSettings(s);
     } catch (_) {}
     setVersion((v) => v + 1);
-  }, [month, activeShift]);
+  }, [month]);
+
+  // Real-time local entries state for both Morning and Evening
+  const [entries, setEntries] = useState<{
+    Morning: Record<number, Record<number, number>>;
+    Evening: Record<number, Record<number, number>>;
+  }>({ Morning: {}, Evening: {} });
+
+  // Sync entries from sheet once loaded, preserving any unpersisted in-flight edits
+  useEffect(() => {
+    const map: {
+      Morning: Record<number, Record<number, number>>;
+      Evening: Record<number, Record<number, number>>;
+    } = { Morning: {}, Evening: {} };
+
+    for (const e of sheet?.entries || []) {
+      const sh = (e.shift === 'Evening' ? 'Evening' : 'Morning') as 'Morning' | 'Evening';
+      const day = Number(e.date.slice(8));
+      (map[sh][e.supplier_id] ||= {})[day] = e.liters;
+    }
+
+    // Preserve any in-flight pending saves so sheet reload doesn't overwrite them
+    for (const item of pendingSaves.current.values()) {
+      const sh = item.shift;
+      const day = Number(item.date.slice(8));
+      if (item.liters > 0) {
+        (map[sh][item.supplierId] ||= {})[day] = item.liters;
+      } else if (map[sh][item.supplierId]) {
+        delete map[sh][item.supplierId][day];
+      }
+    }
+
+    setEntries(map);
+  }, [sheet]);
 
   useEffect(() => {
     load();
-    return () => Object.values(timers.current).forEach(clearTimeout);
-  }, [load, activeShift]);
+  }, [load]);
 
-  const cells = useMemo(() => {
-    const map: Record<number, Record<number, { liters: number; total: number }>> = {};
-    for (const e of sheet?.entries || []) {
-      if ((e.shift || 'Morning') === activeShift) {
-        (map[e.supplier_id] ||= {})[Number(e.date.slice(8))] = { liters: e.liters, total: e.total };
-      }
-    }
-    return map;
-  }, [sheet, activeShift]);
   const paidMap = useMemo(() => Object.fromEntries((sheet?.paid || []).map((p) => [p.supplier_id, p.amount])), [sheet]);
   const carryMap = useMemo(() => Object.fromEntries((sheet?.carry || []).map((p) => [p.supplier_id, p.amount])), [sheet]);
 
-  const stat = (id: number) => {
-    const row = cells[id] || {};
-    let liters = 0, total = 0;
-    for (const k of Object.keys(row)) {
-      liters += row[+k].liters;
-      total += row[+k].total;
+  const stat = useCallback((id: number) => {
+    const mRow = entries.Morning[id] || {};
+    const eRow = entries.Evening[id] || {};
+    const supplier = sheet?.suppliers.find((s) => s.id === id);
+    const rate = Number(supplier?.default_rate) || 0;
+
+    let morningLiters = 0;
+    for (const k of Object.keys(mRow)) {
+      morningLiters += Number(mRow[+k]) || 0;
     }
+    let eveningLiters = 0;
+    for (const k of Object.keys(eRow)) {
+      eveningLiters += Number(eRow[+k]) || 0;
+    }
+    const totalLiters = morningLiters + eveningLiters;
+    const currentShiftLiters = activeShift === 'Morning' ? morningLiters : eveningLiters;
+    const total = Math.round(totalLiters * rate * 100) / 100;
     const paid = paidMap[id] || 0;
     const carry = carryMap[id] || 0;
-    return { liters, total, paid, carry, due: carry + total - paid };
-  };
+    return {
+      morningLiters,
+      eveningLiters,
+      currentShiftLiters,
+      liters: totalLiters,
+      total,
+      paid,
+      carry,
+      due: carry + total - paid,
+    };
+  }, [entries, sheet, paidMap, carryMap, activeShift]);
 
   const columnTotals = useMemo(() => {
     const dayLiters: Record<number, number> = {};
     for (let d = 1; d <= days; d++) dayLiters[d] = 0;
+    let totalMorningLtr = 0;
+    let totalEveningLtr = 0;
     let totalLtr = 0;
     let totalAmount = 0;
     let totalCarry = 0;
     let totalPaid = 0;
     let totalDue = 0;
 
+    const currentShiftEntries = entries[activeShift] || {};
+
     for (const s of sheet?.suppliers || []) {
-      const row = cells[s.id] || {};
+      const row = currentShiftEntries[s.id] || {};
       for (let d = 1; d <= days; d++) {
-        if (row[d]?.liters) {
-          dayLiters[d] += row[d].liters;
+        if (row[d]) {
+          dayLiters[d] += row[d];
         }
       }
       const st = stat(s.id);
+      totalMorningLtr += st.morningLiters;
+      totalEveningLtr += st.eveningLiters;
       totalLtr += st.liters;
       totalAmount += st.total;
       totalCarry += st.carry;
@@ -137,23 +189,106 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
       totalDue += st.due;
     }
 
-    return { dayLiters, totalLtr, totalAmount, totalCarry, totalPaid, totalDue };
-  }, [sheet, cells, paidMap, carryMap, days]);
+    return {
+      dayLiters,
+      totalMorningLtr,
+      totalEveningLtr,
+      totalLtr,
+      totalAmount,
+      totalCarry,
+      totalPaid,
+      totalDue,
+    };
+  }, [sheet, entries, stat, days, activeShift]);
 
-  const onCell = (supplierId: number, day: number, raw: string) => {
+  useEffect(() => {
+    onTotalsChange?.({
+      liters: columnTotals.totalLtr,
+      amount: columnTotals.totalAmount,
+      paid: columnTotals.totalPaid,
+      due: columnTotals.totalDue,
+    });
+  }, [columnTotals, onTotalsChange]);
+
+  const flushPendingSaves = useCallback(async () => {
+    Object.values(timers.current).forEach((t) => clearTimeout(t));
+    timers.current = {};
+    if (!window.electronAPI || pendingSaves.current.size === 0) return;
+    const items = Array.from(pendingSaves.current.values());
+    pendingSaves.current.clear();
+    await Promise.all(items.map((item) => window.electronAPI!.setSupplierCell(item)));
+    onUpdate?.();
+  }, [onUpdate]);
+
+  useEffect(() => {
+    return () => {
+      flushPendingSaves();
+    };
+  }, [flushPendingSaves]);
+
+  const persistCell = useCallback(
+    (supplierId: number, day: number, liters: number, shiftToSave: 'Morning' | 'Evening') => {
+      const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+      const key = `${supplierId}-${day}-${shiftToSave}`;
+      pendingSaves.current.set(key, { supplierId, date: dateStr, liters, shift: shiftToSave });
+
+      if (timers.current[key]) clearTimeout(timers.current[key]);
+      timers.current[key] = setTimeout(async () => {
+        try {
+          if (!window.electronAPI) return;
+          const item = pendingSaves.current.get(key);
+          if (item) {
+            await window.electronAPI.setSupplierCell(item);
+            pendingSaves.current.delete(key);
+          }
+          delete timers.current[key];
+          onUpdate?.();
+        } catch (err) {
+          console.error('Failed to save supplier cell:', err);
+        }
+      }, 75);
+    },
+    [month, onUpdate]
+  );
+
+  const onCell = (supplierId: number, day: number, raw: string, cellShift: 'Morning' | 'Evening') => {
     const liters = parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
-    const key = `${supplierId}-${day}-${activeShift}`;
-    clearTimeout(timers.current[key]);
-    timers.current[key] = setTimeout(async () => {
-      await window.electronAPI?.setSupplierCell({
+    setEntries((prev) => {
+      const shiftMap = prev[cellShift] || {};
+      const row = shiftMap[supplierId] || {};
+      if ((row[day] || 0) === liters) return prev;
+      const nextRow = { ...row };
+      if (liters > 0) nextRow[day] = liters;
+      else delete nextRow[day];
+      return {
+        ...prev,
+        [cellShift]: {
+          ...shiftMap,
+          [supplierId]: nextRow,
+        },
+      };
+    });
+    persistCell(supplierId, day, liters, cellShift);
+  };
+
+  const onCellBlur = async (supplierId: number, day: number, raw: string, cellShift: 'Morning' | 'Evening') => {
+    const liters = parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
+    const key = `${supplierId}-${day}-${cellShift}`;
+    if (timers.current[key]) {
+      clearTimeout(timers.current[key]);
+      delete timers.current[key];
+    }
+    pendingSaves.current.delete(key);
+    if (window.electronAPI) {
+      const dateStr = `${month}-${String(day).padStart(2, '0')}`;
+      await window.electronAPI.setSupplierCell({
         supplierId,
-        date: `${month}-${String(day).padStart(2, '0')}`,
+        date: dateStr,
         liters,
-        shift: activeShift,
+        shift: cellShift,
       });
-      load();
       onUpdate?.();
-    }, 500);
+    }
   };
 
   const onPrev = async (supplierId: number, raw: string) => {
@@ -172,7 +307,8 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
     onUpdate?.();
   };
 
-  const shiftMonth = (d: number) => {
+  const shiftMonth = async (d: number) => {
+    await flushPendingSaves();
     const newM = monthOf(new Date(y, m - 1 + d, 1));
     setLocalMonth(newM);
     onMonthChange?.(newM);
@@ -240,31 +376,51 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
       {/* Month & controls toolbar */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-4 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Shift selector tabs: Morning vs Evening */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* Shift selector tabs: Morning vs Evening with Liter Badges */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
             <button
               type="button"
-              onClick={() => setActiveShift('Morning')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
+              onClick={async () => {
+                if (activeShift !== 'Morning') {
+                  await flushPendingSaves();
+                  setActiveShift('Morning');
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
                 activeShift === 'Morning'
                   ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
               <span>☀️</span>
               <span>{ur ? 'صبح (Morning)' : 'Morning'}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                activeShift === 'Morning' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {qty(columnTotals.totalMorningLtr)} L
+              </span>
             </button>
             <button
               type="button"
-              onClick={() => setActiveShift('Evening')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
+              onClick={async () => {
+                if (activeShift !== 'Evening') {
+                  await flushPendingSaves();
+                  setActiveShift('Evening');
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer transition-all ${
                 activeShift === 'Evening'
                   ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
               }`}
             >
               <span>🌙</span>
               <span>{ur ? 'شام (Evening)' : 'Evening'}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                activeShift === 'Evening' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {qty(columnTotals.totalEveningLtr)} L
+              </span>
             </button>
           </div>
 
@@ -332,7 +488,8 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
           <table className="border-separate border-spacing-0" style={{ minWidth: 'max-content' }}>
             <thead>
               <tr>
-                <th className={`${th} left-0 z-40 text-left`} style={{ minWidth: 170 }}>{ur ? 'سپلائر' : 'Supplier'}</th>
+                <th className={`${th} left-0 z-40 text-center bg-slate-200`} style={{ minWidth: 42, width: 42 }}>#</th>
+                <th className={`${th} left-[42px] z-40 text-left`} style={{ minWidth: 165 }}>{ur ? 'سپلائر' : 'Supplier'}</th>
                 {dayList.map((d) => (
                   <th
                     key={d}
@@ -352,41 +509,62 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
               </tr>
             </thead>
             <tbody>
-              {sheet?.suppliers.map((s) => {
+              {sheet?.suppliers.map((s, idx) => {
                 const st = stat(s.id);
                 return (
                   <tr key={s.id} className="border-b border-slate-100 hover:bg-brand-50/30 transition-colors">
-                    <td className="sticky left-0 z-20 bg-white border-r border-slate-200 px-2.5 py-1.5">
+                    <td className="sticky left-0 z-20 bg-slate-100 border-r border-slate-200 px-1 py-1.5 text-center font-black text-[11px] text-slate-600" style={{ minWidth: 42, width: 42 }}>
+                      #{idx + 1}
+                    </td>
+                    <td className="sticky left-[42px] z-20 bg-white border-r border-slate-200 px-2.5 py-1.5" style={{ minWidth: 165 }}>
                       <div className="font-bold text-[12px] text-slate-800 truncate">{s.name}</div>
                       <div className="text-[10px] text-slate-400">{s.phone || '-'} • Rs.{s.default_rate}</div>
                     </td>
                     {dayList.map((d) => {
-                      const c = cells[s.id]?.[d];
+                      const val = entries[activeShift]?.[s.id]?.[d] || 0;
                       return (
                         <td key={d} className={`border-r border-slate-100 p-0 ${d === todayDay ? 'bg-blue-50/40' : ''}`}>
                           <input
-                            key={`${version}-${d}-${activeShift}`}
+                            key={`${s.id}-${d}-${activeShift}-${version}`}
                             data-s={s.id}
                             data-d={d}
+                            type="text"
                             inputMode="decimal"
-                            defaultValue={c ? qty(c.liters) : ''}
-                            onChange={(e) => onCell(s.id, d, e.target.value)}
+                            defaultValue={val > 0 ? qty(val) : ''}
+                            onChange={(e) => onCell(s.id, d, e.target.value, activeShift)}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0;
+                              e.target.value = v > 0 ? qty(v) : '';
+                              onCellBlur(s.id, d, e.target.value, activeShift);
+                            }}
                             className={`w-full h-7 text-center text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 ${
                               d === todayDay
                                 ? 'bg-blue-50/80 font-bold border-x border-blue-200'
-                                : c
-                                ? 'bg-emerald-50 text-emerald-800'
+                                : val > 0
+                                ? 'bg-emerald-50 text-emerald-800 font-bold'
                                 : 'bg-transparent'
                             }`}
                           />
                         </td>
                       );
                     })}
-                    <td className="px-1.5 text-right text-[11px] font-bold bg-slate-50">{qty(st.liters)}</td>
-                    <td className="px-1.5 text-right text-[11px] font-semibold bg-slate-50">{money(st.total)}</td>
+                    <td className="px-1.5 text-right text-[11px] font-bold bg-slate-50">
+                      <div title={`صبح: ${st.morningLiters}L | شام: ${st.eveningLiters}L`}>
+                        {qty(st.liters)}
+                      </div>
+                      <div className="text-[9px] text-slate-400 font-normal">
+                        {activeShift === 'Morning' ? `صبح: ${st.morningLiters}L` : `شام: ${st.eveningLiters}L`}
+                      </div>
+                    </td>
+                    <td className="px-1.5 text-right text-[11px] font-semibold bg-slate-50">
+                      <div>Rs. {money(st.total)}</div>
+                      {st.morningLiters > 0 && st.eveningLiters > 0 && (
+                        <div className="text-[9px] text-emerald-600 font-bold">دونوں وقت</div>
+                      )}
+                    </td>
                     <td className="p-0 bg-amber-50/60">
                       <input
-                        key={`p-${version}`}
+                        key={`p-${version}-${s.id}`}
                         defaultValue={st.carry ? String(Math.round(st.carry)) : ''}
                         onBlur={(e) => onPrev(s.id, e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
@@ -442,14 +620,14 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
                 );
               })}
               {sheet && sheet.suppliers.length === 0 && (
-                <tr><td colSpan={days + 7} className="py-12 text-center text-xs text-slate-400">{ur ? 'پہلے سپلائر شامل کریں' : 'Add suppliers first'}</td></tr>
+                <tr><td colSpan={days + 8} className="py-12 text-center text-xs text-slate-400">{ur ? 'پہلے سپلائر شامل کریں' : 'Add suppliers first'}</td></tr>
               )}
             </tbody>
             {sheet && sheet.suppliers.length > 0 && (
               <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] font-bold text-xs">
                 <tr className="border-t-2 border-slate-300">
-                  <td className="sticky left-0 z-40 bg-slate-200 border-r border-slate-300 px-2.5 py-2 text-left font-black text-slate-800" style={{ minWidth: 170 }}>
-                    {ur ? 'کل ٹوٹل (ٹوٹل)' : 'Grand Total'}
+                  <td colSpan={2} className="sticky left-0 z-40 bg-slate-200 border-r border-slate-300 px-2.5 py-2 text-left font-black text-slate-800" style={{ minWidth: 207 }}>
+                    {ur ? 'کل ٹوٹل (گرینڈ ٹوٹل)' : 'Grand Total'}
                   </td>
                   {dayList.map((d) => (
                     <td key={d} className="border-r border-slate-200 px-0 py-1.5 text-center text-[10px] font-black text-slate-700 bg-slate-100" style={{ minWidth: 42 }}>
@@ -505,7 +683,20 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
           supplier={billSup}
           settings={billSettings}
           stat={stat(billSup.id)}
-          rows={Object.entries(cells[billSup.id] || {}).map(([d, c]) => ({ day: +d, ...c })).sort((a, b) => a.day - b.day)}
+          rows={dayList
+            .map((d) => {
+              const ml = entries.Morning[billSup.id]?.[d] || 0;
+              const el = entries.Evening[billSup.id]?.[d] || 0;
+              const totalD = ml + el;
+              return {
+                day: d,
+                morningLiters: ml,
+                eveningLiters: el,
+                liters: totalD,
+                total: Math.round(totalD * Number(billSup.default_rate) * 100) / 100,
+              };
+            })
+            .filter((r) => r.liters > 0)}
           onClose={() => setBill(null)}
         />
       )}
@@ -622,8 +813,8 @@ const PayModal: React.FC<{
           <div className="bg-gradient-to-br from-[#1B44C8] via-[#153bb8] to-[#102A7D] text-white rounded-xl p-2 relative overflow-hidden shadow-2xs">
             <div className="flex items-center justify-between gap-1.5">
               <div className="flex items-center gap-1.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-white/95 p-1 border border-blue-300 shadow-2xs shrink-0 flex items-center justify-center">
-                  <CowLogo variant="badge-blue" size={24} />
+                <div className="w-10 h-10 rounded-full bg-white p-0.5 border border-blue-300 shadow-2xs shrink-0 flex items-center justify-center" style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}>
+                  <CowLogo variant="white" size={32} className="w-8 h-8 object-contain" />
                 </div>
                 <div className="min-w-0">
                   <h4 className="text-xs font-black text-amber-200 tracking-tight truncate leading-tight">{settings.shop_title}</h4>
@@ -735,20 +926,31 @@ const BillModal: React.FC<{
   shift: 'Morning' | 'Evening';
   supplier: { id: number; name: string; phone: string; default_rate: number };
   settings: { shop_title: string; owner_name: string; phone: string };
-  stat: { liters: number; total: number; paid: number; carry: number; due: number };
-  rows: { day: number; liters: number; total: number }[];
+  stat: {
+    liters: number;
+    total: number;
+    paid: number;
+    carry: number;
+    due: number;
+    morningLiters?: number;
+    eveningLiters?: number;
+  };
+  rows: { day: number; liters: number; total: number; morningLiters?: number; eveningLiters?: number }[];
   onClose: () => void;
 }> = ({ ur, month, shift, supplier, settings, stat, rows, onClose }) => {
   const shiftText = shift === 'Morning' ? 'صبح (Morning)' : 'شام (Evening)';
   const text = () => [
     `🥛 *${settings.shop_title || 'قاری ظفر اقبال ملک شاپ'}*`,
-    `📄 *سپلائر دودھ کا بل (${shiftText})*`,
+    `📄 *سپلائر دودھ کا بل*`,
     `──────────────────`,
     `👤 *سپلائر:* ${supplier.name}`,
-    `📅 *ماہ:* ${month} (${shiftText})`,
+    `📅 *ماہ:* ${month}`,
     `──────────────────`,
+    `☀️ *صبح کا دودھ:* ${qty(stat.morningLiters || 0)} لیٹر`,
+    `🌙 *شام کا دودھ:* ${qty(stat.eveningLiters || 0)} لیٹر`,
     `🥛 *کل دودھ:* ${qty(stat.liters)} لیٹر`,
-    `💵 *اس ماہ کی رقم:* Rs. ${money(stat.total)}`,
+    `💵 *ریٹ:* Rs. ${supplier.default_rate}/L`,
+    `💰 *اس ماہ کی رقم:* Rs. ${money(stat.total)}`,
     `📊 *سابقہ بقایا:* Rs. ${money(stat.carry)}`,
     `✓ *ادا شدہ رقم:* Rs. ${money(stat.paid)}`,
     `──────────────────`,
@@ -766,7 +968,7 @@ const BillModal: React.FC<{
   };
 
   return (
-    <Shell title={`${ur ? 'سپلائر بل' : 'Supplier Bill'} • ${month} (${shiftText})`} onClose={onClose}>
+    <Shell title={`${ur ? 'سپلائر بل' : 'Supplier Bill'} • ${month}`} onClose={onClose}>
       <div
         id="print-bill"
         className="printable-bill w-full bg-white border border-blue-500/30 rounded-2xl p-2.5 shadow-md space-y-2 text-slate-800 text-xs print:border-none print:shadow-none print:p-0"
@@ -775,21 +977,21 @@ const BillModal: React.FC<{
         <div className="bg-gradient-to-br from-[#1B44C8] via-[#153bb8] to-[#102A7D] text-white rounded-xl p-2 relative overflow-hidden shadow-2xs">
           <div className="flex items-center justify-between gap-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-white/95 p-1 border border-blue-300 shadow-2xs shrink-0 flex items-center justify-center">
-                <CowLogo variant="badge-blue" size={24} />
+              <div className="w-10 h-10 rounded-full bg-white p-0.5 border border-blue-300 shadow-2xs shrink-0 flex items-center justify-center" style={{ width: 40, height: 40, minWidth: 40, minHeight: 40 }}>
+                <CowLogo variant="white" size={32} className="w-8 h-8 object-contain" />
               </div>
               <div className="min-w-0">
                 <h2 className="text-xs font-black text-amber-200 tracking-tight truncate leading-tight">
                   {settings.shop_title || 'قاری ظفر اقبال ملک شاپ'}
                 </h2>
                 <p className="text-[9px] text-blue-100 font-medium truncate leading-tight">
-                  سپلائر بل ({shift === 'Morning' ? '☀️ صبح کا کھاتہ' : '🌙 شام کا کھاتہ'})
+                  سپلائر ماہانہ بل (صبح و شام)
                 </p>
               </div>
             </div>
 
             <div className="bg-black/30 border border-blue-300/40 px-2 py-1 rounded-lg text-center shrink-0">
-              <div className="text-[8px] text-blue-200 uppercase font-bold leading-none">ماہ / شفٹ</div>
+              <div className="text-[8px] text-blue-200 uppercase font-bold leading-none">ماہانہ بل</div>
               <div className="text-xs font-black text-amber-300 leading-tight mt-0.5">
                 {month}
               </div>
@@ -813,12 +1015,14 @@ const BillModal: React.FC<{
             <span className="font-black text-brand-700">Rs. {supplier.default_rate}/L</span>
           </div>
           <div className="flex items-center gap-1 truncate text-slate-500">
-            <span className="text-slate-400 shrink-0 font-medium">شفٹ:</span>
-            <span className="font-bold text-slate-800">{shiftText}</span>
+            <span className="text-slate-400 shrink-0 font-medium">صبح / شام:</span>
+            <span className="font-bold text-slate-800">
+              ☀️ {qty(stat.morningLiters || 0)}L • 🌙 {qty(stat.eveningLiters || 0)}L
+            </span>
           </div>
           <div className="flex items-center gap-1 justify-end truncate text-slate-500">
             <span className="text-slate-400 shrink-0 font-medium">کل دودھ:</span>
-            <span className="font-black text-slate-800">{qty(stat.liters)} L</span>
+            <span className="font-black text-brand-700">{qty(stat.liters)} L</span>
           </div>
         </div>
 

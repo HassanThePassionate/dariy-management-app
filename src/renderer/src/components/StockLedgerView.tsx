@@ -150,6 +150,49 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({
     const q = parseFloat(quantity), r = parseFloat(rate);
     if (!(q > 0)) return setError(ur ? 'مقدار لکھیں' : 'Enter quantity');
     if (!(r >= 0)) return setError(ur ? 'ریٹ لکھیں' : 'Enter rate');
+
+    // Strict Outward Stock Validation (prevent selling when stock is finished)
+    if (type === 'Outward') {
+      if (sizeOptions && sizeOptions.length > 0) {
+        if (sizes.length === 0) {
+          return setError(ur ? 'فروخت / استعمال کے لیے سائز منتخب کریں' : 'Please select size for outward sale');
+        }
+        for (const sz of sizes) {
+          const szStat = sizeStats.find((s) => s.size === sz);
+          const avail = szStat ? szStat.available : 0;
+          if (avail <= 0) {
+            return setError(
+              ur
+                ? `آپ کا سائز (${sz}) کا سٹاک ختم ہے! پہلے سٹاک شامل کریں۔`
+                : `Size (${sz}) is out of stock! Please add stock first.`
+            );
+          }
+          if (q > avail) {
+            return setError(
+              ur
+                ? `سائز (${sz}) کا دستیاب سٹاک صرف ${avail} ${unit} ہے۔ آپ ${q} ${unit} فروخت نہیں کر سکتے۔`
+                : `Available stock for size (${sz}) is only ${avail} ${unit}. You cannot outward ${q} ${unit}.`
+            );
+          }
+        }
+      } else {
+        if (stats.stock <= 0) {
+          return setError(
+            ur
+              ? 'موجودہ سٹاک ختم ہے! فروخت کرنے سے پہلے خریداری (Inward) درج کریں۔'
+              : 'Stock is finished! Please add inward stock first.'
+          );
+        }
+        if (q > stats.stock) {
+          return setError(
+            ur
+              ? `دستیاب سٹاک صرف ${stats.stock} ${unit} ہے۔ آپ ${q} ${unit} فروخت نہیں کر سکتے۔`
+              : `Available stock is only ${stats.stock} ${unit}. You cannot outward ${q} ${unit}.`
+          );
+        }
+      }
+    }
+
     const res = await addTxn({
       type,
       quantity: q,
@@ -188,6 +231,37 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({
     const q = parseFloat(editQuantity), r = parseFloat(editRate);
     if (!(q > 0)) return setEditError(ur ? 'درست مقدار درج کریں' : 'Enter valid quantity');
     if (!(r >= 0)) return setEditError(ur ? 'درست ریٹ درج کریں' : 'Enter valid rate');
+
+    // Strict Outward Stock Validation for Edit
+    if (editType === 'Outward') {
+      if (sizeOptions && sizeOptions.length > 0) {
+        if (editSizes.length === 0) {
+          return setEditError(ur ? 'فروخت کے لیے سائز منتخب کریں' : 'Please select size for outward sale');
+        }
+        for (const sz of editSizes) {
+          const szStat = sizeStats.find((s) => s.size === sz);
+          const prevQtyForThisSz =
+            editItem.type === 'Outward' && (editItem.sizes || '').split(',').map((s) => s.trim()).includes(sz)
+              ? editItem.quantity
+              : 0;
+          const avail = (szStat ? szStat.available : 0) + prevQtyForThisSz;
+          if (avail <= 0) {
+            return setEditError(
+              ur
+                ? `آپ کا سائز (${sz}) کا سٹاک ختم ہے! پہلے سٹاک شامل کریں۔`
+                : `Size (${sz}) is out of stock! Please add stock first.`
+            );
+          }
+          if (q > avail) {
+            return setEditError(
+              ur
+                ? `سائز (${sz}) کا دستیاب سٹاک صرف ${avail} ${unit} ہے۔ آپ ${q} ${unit} فروخت نہیں کر سکتے۔`
+                : `Available stock for size (${sz}) is only ${avail} ${unit}. You cannot outward ${q} ${unit}.`
+            );
+          }
+        }
+      }
+    }
 
     setEditSaving(true);
     try {
@@ -391,18 +465,49 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5">{ur ? 'سائز منتخب کریں' : 'Select Sizes'}</label>
               <div className="flex flex-wrap gap-1.5">
-                {sizeOptions.map((sz) => (
-                  <button
-                    key={sz}
-                    type="button"
-                    onClick={() => setSizes((p) => (p.includes(sz) ? p.filter((x) => x !== sz) : [...p, sz]))}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-colors ${
-                      sizes.includes(sz) ? 'bg-brand-600 text-white border-brand-600' : 'bg-white border-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {sz}
-                  </button>
-                ))}
+                {sizeOptions.map((sz) => {
+                  const szStat = sizeStats.find((s) => s.size === sz);
+                  const isOutOfStock = type === 'Outward' && (szStat ? szStat.available <= 0 : true);
+                  const isSelected = sizes.includes(sz);
+                  return (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => {
+                        if (isOutOfStock) {
+                          setError(
+                            ur
+                              ? `سائز ${sz} کا سٹاک ختم ہے! فروخت کرنے سے پہلے سٹاک شامل کریں۔`
+                              : `Size ${sz} is out of stock! Please add stock first.`
+                          );
+                          return;
+                        }
+                        setError('');
+                        setSizes((p) => (p.includes(sz) ? p.filter((x) => x !== sz) : [...p, sz]));
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                        isOutOfStock
+                          ? 'bg-slate-100 text-slate-400 border-dashed border-slate-300 opacity-75'
+                          : isSelected
+                          ? 'bg-brand-600 text-white border-brand-600 shadow-2xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300'
+                      }`}
+                    >
+                      <span>{sz}</span>
+                      {type === 'Outward' && (
+                        <span
+                          className={`text-[9px] px-1 py-0.2 rounded font-black ${
+                            isOutOfStock
+                              ? 'bg-rose-100 text-rose-700'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {isOutOfStock ? (ur ? 'ختم' : 'Out') : `${szStat?.available || 0} ${unit}`}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -634,22 +739,52 @@ export const StockLedgerView: React.FC<StockLedgerViewProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">{ur ? 'سائز' : 'Sizes'}</label>
                   <div className="flex flex-wrap gap-1">
-                    {sizeOptions.map((sz) => (
-                      <button
-                        key={sz}
-                        type="button"
-                        onClick={() =>
-                          setEditSizes((p) => (p.includes(sz) ? p.filter((x) => x !== sz) : [...p, sz]))
-                        }
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold border cursor-pointer ${
-                          editSizes.includes(sz)
-                            ? 'bg-brand-600 text-white border-brand-600'
-                            : 'bg-white border-slate-200 text-slate-600'
-                        }`}
-                      >
-                        {sz}
-                      </button>
-                    ))}
+                    {sizeOptions.map((sz) => {
+                      const szStat = sizeStats.find((s) => s.size === sz);
+                      const prevQtyForThisSz =
+                        editItem?.type === 'Outward' && (editItem.sizes || '').split(',').map((s) => s.trim()).includes(sz)
+                          ? editItem.quantity
+                          : 0;
+                      const avail = (szStat ? szStat.available : 0) + prevQtyForThisSz;
+                      const isOutOfStock = editType === 'Outward' && avail <= 0;
+                      const isSelected = editSizes.includes(sz);
+                      return (
+                        <button
+                          key={sz}
+                          type="button"
+                          onClick={() => {
+                            if (isOutOfStock) {
+                              setEditError(
+                                ur
+                                  ? `سائز ${sz} کا سٹاک ختم ہے! پہلے سٹاک شامل کریں۔`
+                                  : `Size ${sz} is out of stock! Please add stock first.`
+                              );
+                              return;
+                            }
+                            setEditError('');
+                            setEditSizes((p) => (p.includes(sz) ? p.filter((x) => x !== sz) : [...p, sz]));
+                          }}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold border cursor-pointer flex items-center gap-1 ${
+                            isOutOfStock
+                              ? 'bg-slate-100 text-slate-400 border-dashed border-slate-300 opacity-75'
+                              : isSelected
+                              ? 'bg-brand-600 text-white border-brand-600'
+                              : 'bg-white border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          <span>{sz}</span>
+                          {editType === 'Outward' && (
+                            <span
+                              className={`text-[8.5px] px-1 py-0.2 rounded font-black ${
+                                isOutOfStock ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isOutOfStock ? (ur ? 'ختم' : 'Out') : `${avail} ${unit}`}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

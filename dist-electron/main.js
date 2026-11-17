@@ -1206,11 +1206,19 @@ function registerIpcHandlers() {
     const db = getDatabase();
     const liters = Number(p.liters);
     const shift = p.shift === "Evening" ? "Evening" : "Morning";
+    const shiftCond = shift === "Evening" ? "shift = 'Evening'" : "(shift = 'Morning' OR shift IS NULL)";
     db.transaction(() => {
-      const prev = db.prepare('SELECT rate FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND (shift = ? OR (shift IS NULL AND ? = "Morning")) ORDER BY id DESC LIMIT 1').get(p.supplierId, p.date, shift, shift);
+      const prev = db.prepare(`SELECT rate FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND ${shiftCond} ORDER BY id DESC LIMIT 1`).get(p.supplierId, p.date);
       const sup = db.prepare("SELECT default_rate FROM suppliers WHERE id = ?").get(p.supplierId);
-      const rate = Number(prev?.rate ?? sup?.default_rate) || 0;
-      db.prepare('DELETE FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND (shift = ? OR (shift IS NULL AND ? = "Morning"))').run(p.supplierId, p.date, shift, shift);
+      let rate = Number(prev?.rate ?? sup?.default_rate) || 0;
+      if (rate <= 0) {
+        try {
+          const sRow = db.prepare("SELECT value FROM settings WHERE key = 'default_rate'").get();
+          if (sRow && parseFloat(sRow.value) > 0) rate = parseFloat(sRow.value);
+        } catch {
+        }
+      }
+      db.prepare(`DELETE FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND ${shiftCond}`).run(p.supplierId, p.date);
       if (Number.isFinite(liters) && liters > 0) {
         db.prepare("INSERT INTO supplier_purchases (supplier_id, date, liters, rate, total, notes, shift) VALUES (?, ?, ?, ?, ?, ?, ?)").run(p.supplierId, p.date, liters, rate, Math.round(liters * rate * 100) / 100, "", shift);
       }
@@ -1226,14 +1234,22 @@ function registerIpcHandlers() {
     const from = Math.max(1, Math.floor(p.fromDay) || 1);
     const to = Math.min(days, Math.floor(p.toDay) || days);
     const shift = p.shift === "Evening" ? "Evening" : "Morning";
+    const shiftCond = shift === "Evening" ? "shift = 'Evening'" : "(shift = 'Morning' OR shift IS NULL)";
     let updated = 0;
     db.transaction(() => {
       for (const id of p.supplierIds) {
         const sup = db.prepare("SELECT default_rate FROM suppliers WHERE id = ?").get(id);
-        const rate = Number(p.rate) > 0 ? Number(p.rate) : Number(sup?.default_rate) || 0;
+        let rate = Number(p.rate) > 0 ? Number(p.rate) : Number(sup?.default_rate) || 0;
+        if (rate <= 0) {
+          try {
+            const sRow = db.prepare("SELECT value FROM settings WHERE key = 'default_rate'").get();
+            if (sRow && parseFloat(sRow.value) > 0) rate = parseFloat(sRow.value);
+          } catch {
+          }
+        }
         for (let d = from; d <= to; d++) {
           const date = `${p.month}-${String(d).padStart(2, "0")}`;
-          db.prepare('DELETE FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND (shift = ? OR (shift IS NULL AND ? = "Morning"))').run(id, date, shift, shift);
+          db.prepare(`DELETE FROM supplier_purchases WHERE supplier_id = ? AND date = ? AND ${shiftCond}`).run(id, date);
           db.prepare("INSERT INTO supplier_purchases (supplier_id, date, liters, rate, total, notes, shift) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, date, liters, rate, Math.round(liters * rate * 100) / 100, "Bulk", shift);
           updated++;
         }
@@ -1246,7 +1262,8 @@ function registerIpcHandlers() {
     db.transaction(() => {
       if (p.shift) {
         const shift = p.shift === "Evening" ? "Evening" : "Morning";
-        db.prepare('DELETE FROM supplier_purchases WHERE supplier_id = ? AND date LIKE ? AND (shift = ? OR (shift IS NULL AND ? = "Morning"))').run(p.supplierId, `${p.month}-%`, shift, shift);
+        const shiftCond = shift === "Evening" ? "shift = 'Evening'" : "(shift = 'Morning' OR shift IS NULL)";
+        db.prepare(`DELETE FROM supplier_purchases WHERE supplier_id = ? AND date LIKE ? AND ${shiftCond}`).run(p.supplierId, `${p.month}-%`);
       } else {
         db.prepare("DELETE FROM supplier_purchases WHERE supplier_id = ? AND date LIKE ?").run(p.supplierId, `${p.month}-%`);
         db.prepare("DELETE FROM supplier_payments WHERE supplier_id = ? AND date LIKE ?").run(p.supplierId, `${p.month}-%`);
@@ -1303,14 +1320,8 @@ function registerIpcHandlers() {
     const [y, m, d] = date.split("-").map(Number);
     const prevDateObj = new Date(y, m - 1, d - 1);
     const prevDateStr = `${prevDateObj.getFullYear()}-${String(prevDateObj.getMonth() + 1).padStart(2, "0")}-${String(prevDateObj.getDate()).padStart(2, "0")}`;
-    let yesterdayLeftover = 0;
-    const prevRecord = db.prepare("SELECT leftover_tomorrow FROM daily_stock_records WHERE date = ?").get(prevDateStr);
-    if (prevRecord && prevRecord.leftover_tomorrow !== void 0) {
-      yesterdayLeftover = Number(prevRecord.leftover_tomorrow);
-    } else {
-      const stockMap = computeStock(db, date);
-      yesterdayLeftover = Number(stockMap[date]?.opening) || 0;
-    }
+    const stockMap = computeStock(db, date);
+    const yesterdayLeftover = Number(stockMap[date]?.opening) || 0;
     const existing = db.prepare("SELECT * FROM daily_stock_records WHERE date = ?").get(date);
     const dahiMilkUsed = existing ? Number(existing.dahi_milk_used) || 0 : 0;
     const totalAvail = yesterdayLeftover + receivedToday;
@@ -1368,11 +1379,38 @@ function registerIpcHandlers() {
   });
   import_electron2.ipcMain.handle("stock:getHistory", async (_e, limit = 14) => {
     const db = getDatabase();
-    return db.prepare(`
-      SELECT * FROM daily_stock_records
-      ORDER BY date DESC
-      LIMIT ?
-    `).all(limit);
+    let activeRate = 240;
+    try {
+      const priceRow = db.prepare("SELECT rate FROM milk_price_history ORDER BY effective_from DESC, id DESC LIMIT 1").get();
+      if (priceRow && priceRow.rate > 0) activeRate = priceRow.rate;
+      else {
+        const sRow = db.prepare("SELECT value FROM settings WHERE key = 'default_rate'").get();
+        if (sRow && parseFloat(sRow.value) > 0) activeRate = parseFloat(sRow.value);
+      }
+    } catch {
+    }
+    const now = /* @__PURE__ */ new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const stockMap = computeStock(db, todayStr);
+    const history = [];
+    for (let i = 0; i < limit; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const dayData = stockMap[dStr] || { opening: 0, purchased: 0, khata: 0, pos: 0, closing: 0, short: 0 };
+      const manual = db.prepare("SELECT * FROM daily_stock_records WHERE date = ?").get(dStr);
+      history.push({
+        id: manual?.id || i + 1,
+        date: dStr,
+        yesterday_leftover: dayData.opening,
+        received_today: dayData.purchased,
+        sold_today: Math.round((dayData.khata + dayData.pos) * 100) / 100,
+        leftover_tomorrow: dayData.closing,
+        rate: activeRate,
+        dahi_kg: manual?.dahi_kg || 0,
+        notes: manual?.notes || ""
+      });
+    }
+    return history;
   });
   import_electron2.ipcMain.handle("stock:deleteDailyRecord", async (_e, id) => {
     const db = getDatabase();

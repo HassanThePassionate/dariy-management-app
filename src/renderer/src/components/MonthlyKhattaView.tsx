@@ -106,6 +106,7 @@ const KhataRow = React.memo<KhataRowProps>(
     onDelete,
     onPrevChange,
   }) => {
+    const { language } = useLanguage();
     const totalLiters = useMemo(() => {
       let sum = 0;
       for (let d = 1; d <= totalDays; d++) {
@@ -273,12 +274,14 @@ const KhataRow = React.memo<KhataRowProps>(
         >
           <div className="flex items-center justify-center gap-1">
             {balance <= 0 && (bill > 0 || carry > 0 || received > 0) ? (
-              <span
-                className="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-extrabold flex items-center gap-0.5 border border-emerald-300 select-none whitespace-nowrap shadow-2xs"
-                title="مکمل ادا شدہ"
+              <button
+                type="button"
+                onClick={() => onBill(customer.id)}
+                className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-extrabold flex items-center gap-0.5 border border-emerald-300 cursor-pointer transition-colors whitespace-nowrap shadow-2xs"
+                title={language === 'ur' ? 'کھاتہ مکمل ادا شدہ (بل دیکھنے کے لیے کلک کریں)' : 'Fully Paid (Click to view bill)'}
               >
                 ✓ Paid
-              </span>
+              </button>
             ) : (
               <button
                 onClick={() => onPay(customer.id)}

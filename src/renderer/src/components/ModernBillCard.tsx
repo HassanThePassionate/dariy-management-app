@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Calendar, Building2, Send } from 'lucide-react';
+import { User, Calendar, Building2, Send, CheckCircle2 } from 'lucide-react';
 import { CowLogo } from './CowLogo';
 
 export interface ModernBillCardProps {
@@ -46,8 +46,8 @@ export const ModernBillCard: React.FC<ModernBillCardProps> = ({
   bill,
   carry,
   received,
-  payable,
   settings,
+  ur = true,
 }) => {
   const shopTitle = settings.shop_title || 'قاری ظفر اقبال ملک شاپ';
   const ownerName = settings.owner_name || 'حافظ مصعب ظفر';
@@ -56,17 +56,25 @@ export const ModernBillCard: React.FC<ModernBillCardProps> = ({
   const accountNumber = settings.account_number || '02090111954760';
   const contactPhone = settings.phone || '+92 321 0001168';
 
+  const totalBill = (carry || 0) + (bill || 0);
+  const totalReceived = received || 0;
+  const balance = totalBill - totalReceived;
+
+  const isPaid = balance <= 0 && (totalBill > 0 || totalReceived > 0);
+  const isPartial = totalReceived > 0 && balance > 0;
+  const isAdvance = balance < 0;
+
   return (
     <div
       id="print-bill"
       dir="rtl"
-      className="printable-bill mx-auto shadow-2xl print:shadow-none print:m-0 select-none text-right"
+      className="printable-bill mx-auto shadow-xl print:shadow-none print:m-0 select-none text-right"
       style={{
-        width: '390px',
+        width: '360px',
         maxWidth: '100%',
         boxSizing: 'border-box',
         background: '#FFFFFF',
-        borderRadius: '28px',
+        borderRadius: '20px',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
@@ -75,339 +83,285 @@ export const ModernBillCard: React.FC<ModernBillCardProps> = ({
         fontVariantNumeric: 'tabular-nums',
       }}
     >
-      {/* 1. Header Gradient Banner */}
+      {/* 1. Header Gradient Banner (Compact) */}
       <div
         style={{
           position: 'relative',
           overflow: 'hidden',
-          background: 'linear-gradient(155deg, #1B44C8 0%, #102A7D 100%)',
-          padding: '22px 20px 48px',
+          background: 'linear-gradient(135deg, #1B44C8 0%, #102A7D 100%)',
+          padding: '12px 14px 14px',
           color: '#FFFFFF',
           display: 'flex',
           flexDirection: 'column',
-          gap: '16px',
+          gap: '8px',
         }}
       >
-        {/* Background decorative circular shapes */}
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            top: '-70px',
-            left: '-60px',
-            width: '200px',
-            height: '200px',
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.08)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            bottom: '-90px',
-            right: '-30px',
-            width: '190px',
-            height: '190px',
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.06)',
-            pointerEvents: 'none',
-          }}
-        />
-
         {/* Shop Branding Header */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div
-            style={{
-              width: '46px',
-              height: '46px',
-              flexShrink: 0,
-              borderRadius: '14px',
-              background: 'rgba(255,255,255,0.18)',
-              border: '1px solid rgba(255,255,255,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <CowLogo variant="white" className="w-8 h-8 object-contain" />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: '19px', fontWeight: 800, lineHeight: 1.4, color: '#FFFFFF' }}>
-              {shopTitle}
-            </div>
-            <div style={{ fontSize: '12px', lineHeight: 1.5, color: 'rgba(255,255,255,0.85)' }}>
-              پروپرائیٹر: {ownerName}
-            </div>
-          </div>
-        </div>
-
-        {/* Total Payable Section */}
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-          <div style={{ fontSize: '13px', lineHeight: 1.5, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>
-            کل واجب الادا رقم
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-            <span style={{ fontSize: '46px', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#FFFFFF' }}>
-              {money(payable)}
-            </span>
-            <span style={{ fontSize: '16px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-              روپے
-            </span>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
-              padding: '4px 12px',
-              borderRadius: '999px',
-              background: 'rgba(255,255,255,0.16)',
-              border: '1px solid rgba(255,255,255,0.26)',
-              fontSize: '12px',
-              fontWeight: 600,
-              color: '#FFFFFF',
-            }}
-          >
-            <Calendar style={{ width: '13px', height: '13px' }} />
-            <span>بل ہر ماہ 5 تاریخ تک ادا کریں</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Overlapping Card Body */}
-      <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          marginTop: '-26px',
-          background: '#FFFFFF',
-          borderRadius: '28px 28px 0 0',
-          padding: '18px 16px 18px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '13px',
-          boxShadow: '0 -8px 22px rgba(15,36,102,0.12)',
-        }}
-      >
-        {/* Customer Information & Badges */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
             <div
               style={{
-                width: '40px',
-                height: '40px',
+                width: '38px',
+                height: '38px',
                 flexShrink: 0,
                 borderRadius: '50%',
-                background: '#EAF0FF',
+                background: '#FFFFFF',
+                border: '1.5px solid rgba(255,255,255,0.6)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#1B44C8',
+                padding: '2px',
               }}
             >
-              <User style={{ width: '20px', height: '20px' }} />
+              <CowLogo variant="white" size={32} className="w-8 h-8 object-contain" />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '11px', lineHeight: 1.4, color: '#5B6785' }}>بل بنام</span>
-              <span style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.3, color: '#0F1B44' }}>
-                {customerName}
-              </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 800, lineHeight: 1.2, color: '#FFFFFF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {shopTitle}
+              </div>
+              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.2 }}>
+                {ownerName} • {contactPhone}
+              </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <span
-              style={{
-                padding: '4px 10px',
-                borderRadius: '999px',
-                background: '#F1F5FF',
-                border: '1px solid #E1E9FC',
-                fontSize: '11.5px',
-                fontWeight: 600,
-                color: '#1B44C8',
-              }}
-            >
-              {monthLabel}
-            </span>
-            <span
-              style={{
-                padding: '4px 10px',
-                borderRadius: '999px',
-                background: '#F1F5FF',
-                border: '1px solid #E1E9FC',
-                fontSize: '11.5px',
-                fontWeight: 700,
-                color: '#0F1B44',
-              }}
-            >
-              کھاتہ #{customerId || 1}
-            </span>
-            <span
-              style={{
-                padding: '4px 10px',
-                borderRadius: '999px',
-                background: '#F1F5FF',
-                border: '1px solid #E1E9FC',
-                fontSize: '11.5px',
-                fontWeight: 600,
-                color: '#5B6785',
-              }}
-            >
-              تاریخ: {issueDateStr}
-            </span>
+          <div
+            style={{
+              padding: '3px 8px',
+              borderRadius: '8px',
+              background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.25)',
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#FFFFFF',
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {monthLabel}
           </div>
         </div>
 
-        {/* 3-Column Metrics Card */}
+        {/* Total Amount & Status Row */}
         <div
           style={{
             display: 'flex',
-            background: '#F3F6FE',
-            borderRadius: '16px',
-            padding: '10px 0',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(0,0,0,0.2)',
+            borderRadius: '12px',
+            padding: '6px 10px',
           }}
         >
-          <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '11px', lineHeight: 1.4, color: '#5B6785' }}>کل دودھ</span>
-            <span style={{ fontSize: '17px', fontWeight: 800, lineHeight: 1.3, color: '#0F1B44' }}>
-              {qty(liters)}{' '}
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#5B6785' }}>لٹر</span>
-            </span>
+          <div>
+            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>
+              {isPaid ? 'اس ماہ کا کل بل' : 'کل واجب الادا رقم'}
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: '#FCD34D', lineHeight: 1.1 }}>
+              Rs. {money(isPaid ? totalBill : balance)}
+            </div>
           </div>
-          <div aria-hidden="true" style={{ width: '1px', background: '#DDE5F8' }} />
-          <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '11px', lineHeight: 1.4, color: '#5B6785' }}>فی لٹر ریٹ</span>
-            <span style={{ fontSize: '17px', fontWeight: 800, lineHeight: 1.3, color: '#0F1B44' }}>
-              {rate}{' '}
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#5B6785' }}>روپے</span>
-            </span>
-          </div>
-          <div aria-hidden="true" style={{ width: '1px', background: '#DDE5F8' }} />
-          <div style={{ flex: '1 1 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <span style={{ fontSize: '11px', lineHeight: 1.4, color: '#5B6785' }}>سابقہ بقایا</span>
+
+          {/* Status Pill */}
+          {isPaid ? (
             <span
               style={{
-                fontSize: '17px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 10px',
+                borderRadius: '999px',
+                background: '#059669',
+                fontSize: '10.5px',
                 fontWeight: 800,
-                lineHeight: 1.3,
-                color: carry !== 0 ? '#DC2626' : '#0F1B44',
+                color: '#FFFFFF',
               }}
             >
-              {money(carry)}{' '}
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#5B6785' }}>روپے</span>
+              ✓ ادا شدہ (PAID)
             </span>
+          ) : isPartial ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: '999px',
+                background: '#D97706',
+                fontSize: '10px',
+                fontWeight: 700,
+                color: '#FFFFFF',
+              }}
+            >
+              ⚠️ جزوی ادا
+            </span>
+          ) : (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '3px 8px',
+                borderRadius: '999px',
+                background: 'rgba(255,255,255,0.2)',
+                fontSize: '10px',
+                fontWeight: 600,
+                color: '#FFFFFF',
+              }}
+            >
+              بل واجب الادا
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Compact Body */}
+      <div
+        style={{
+          padding: '10px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          background: '#FFFFFF',
+        }}
+      >
+        {/* Customer Info Strip */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#F8FAFC',
+            borderRadius: '10px',
+            padding: '6px 8px',
+            fontSize: '11px',
+            border: '1px solid #E2E8F0',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ color: '#64748B' }}>گاہک:</span>
+            <span style={{ fontWeight: 800, color: '#0F1B44' }}>{customerName}</span>
+            {customerId && (
+              <span style={{ fontSize: '9px', background: '#E0E7FF', color: '#3730A3', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                #{customerId}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '10px', color: '#64748B' }}>
+            {issueDateStr}
           </div>
         </div>
 
-        {/* If payment already received this month, show clean breakdown pill */}
-        {received > 0 && (
+        {/* 4-Column Metrics: Milk Breakdown */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: carry !== 0 ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
+            background: '#F1F5F9',
+            borderRadius: '10px',
+            padding: '6px 4px',
+            textAlign: 'center',
+            fontSize: '10px',
+          }}
+        >
+          <div>
+            <div style={{ color: '#64748B' }}>کل دودھ</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F1B44' }}>
+              {qty(liters)} <span style={{ fontSize: '9px', fontWeight: 500 }}>L</span>
+            </div>
+          </div>
+          <div style={{ borderRight: '1px solid #CBD5E1' }}>
+            <div style={{ color: '#64748B' }}>ریٹ</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#0F1B44' }}>
+              {rate}
+            </div>
+          </div>
+          <div style={{ borderRight: '1px solid #CBD5E1' }}>
+            <div style={{ color: '#64748B' }}>ماہانہ بل</div>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: '#1B44C8' }}>
+              Rs. {money(bill)}
+            </div>
+          </div>
+          {carry !== 0 && (
+            <div style={{ borderRight: '1px solid #CBD5E1' }}>
+              <div style={{ color: '#64748B' }}>سابقہ</div>
+              <div style={{ fontSize: '13px', fontWeight: 800, color: carry > 0 ? '#DC2626' : '#059669' }}>
+                Rs. {money(carry)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Financial Summary */}
+        <div
+          style={{
+            background: isPaid ? '#F0FDF4' : isPartial ? '#FFFBEB' : '#F8FAFC',
+            border: `1px solid ${isPaid ? '#86EFAC' : isPartial ? '#FDE68A' : '#E2E8F0'}`,
+            borderRadius: '10px',
+            padding: '8px 10px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            fontSize: '11px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+            <span>کل بل بنتا تھا:</span>
+            <span style={{ fontWeight: 700, color: '#0F1B44' }}>Rs. {money(totalBill)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569' }}>
+            <span>وصول شدہ رقم:</span>
+            <span style={{ fontWeight: 800, color: '#059669' }}>Rs. {money(totalReceived)}</span>
+          </div>
           <div
             style={{
               display: 'flex',
-              alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '6px 12px',
-              borderRadius: '12px',
-              background: '#ECFDF5',
-              border: '1px solid #A7F3D0',
-              fontSize: '11.5px',
-              fontWeight: 600,
-              color: '#065F46',
+              paddingTop: '4px',
+              borderTop: `1px solid ${isPaid ? '#BBF7D0' : isPartial ? '#FDE68A' : '#E2E8F0'}`,
+              fontWeight: 800,
+              fontSize: '12px',
             }}
           >
-            <span>وصول شدہ رقم (اس ماہ):</span>
-            <span style={{ fontWeight: 800 }}>- {money(received)} روپے</span>
-          </div>
-        )}
-
-        {/* 3. Official Bank Payment Card */}
-        <div
-          style={{
-            position: 'relative',
-            overflow: 'hidden',
-            background: 'linear-gradient(135deg, #14308F 0%, #0A173F 100%)',
-            borderRadius: '18px',
-            padding: '14px 16px',
-            color: '#FFFFFF',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-          }}
-        >
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: '-50px',
-              left: '-40px',
-              width: '140px',
-              height: '140px',
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.07)',
-              pointerEvents: 'none',
-            }}
-          />
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 700 }}>
-              <Building2 style={{ width: '16px', height: '16px' }} />
-              {bankName}
-            </span>
-            <span
-              style={{
-                fontSize: '10.5px',
-                fontWeight: 600,
-                padding: '2px 9px',
-                borderRadius: '999px',
-                background: 'rgba(255,255,255,0.14)',
-                color: 'rgba(255,255,255,0.92)',
-              }}
-            >
-              آن لائن ادائیگی
+            <span style={{ color: '#0F1B44' }}>باقی واجب الادا:</span>
+            <span style={{ color: balance > 0 ? '#DC2626' : '#059669' }}>
+              {balance > 0
+                ? `Rs. ${money(balance)}`
+                : balance < 0
+                ? `Rs. ${money(-balance)} (ایڈوانس)`
+                : `Rs. 0 (صاف ✓)`}
             </span>
           </div>
-
-          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.68)' }}>اکاؤنٹ نمبر</span>
-            <span
-              dir="ltr"
-              style={{
-                unicodeBidi: 'isolate',
-                alignSelf: 'flex-start',
-                fontSize: '20px',
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                fontFamily: 'monospace',
-              }}
-            >
-              {accountNumber}
-            </span>
-          </div>
-
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.68)' }}>اکاؤنٹ ٹائٹل</span>
-            <span style={{ fontSize: '13px', fontWeight: 700 }}>{accountTitle}</span>
+          <div style={{ fontSize: '9.5px', color: isPaid ? '#166534' : isPartial ? '#92400E' : '#64748B', textAlign: 'center', paddingTop: '2px', fontWeight: 600 }}>
+            {isPaid
+              ? `✓ کل بل Rs. ${money(totalBill)} مکمل ادا ہو چکا ہے۔ شکریہ!`
+              : isPartial
+              ? `⚠️ کل بل Rs. ${money(totalBill)}، ادا Rs. ${money(totalReceived)}، باقی Rs. ${money(balance)}`
+              : `⌛ براہ کرم بل 5 تاریخ تک ادا فرمائیں۔ شکریہ!`}
           </div>
         </div>
 
-        {/* 4. WhatsApp / Transfer Verification Instruction */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '0 4px' }}>
-          <Send
-            style={{
-              width: '16px',
-              height: '16px',
-              color: '#1B44C8',
-              flexShrink: 0,
-              marginTop: '2px',
-            }}
-          />
-          <p style={{ margin: 0, fontSize: '11px', lineHeight: 1.6, color: '#5B6785' }}>
-            رقم صرف اسی اکاؤنٹ میں بھیجیں، پھر سکرین شاٹ واٹس ایپ کریں:{' '}
-            <span dir="ltr" style={{ unicodeBidi: 'isolate', fontWeight: 700, color: '#1B44C8' }}>
-              {contactPhone}
-            </span>
-          </p>
+        {/* Bank & Payment Info Strip */}
+        <div
+          style={{
+            background: '#F1F5F9',
+            borderRadius: '8px',
+            padding: '5px 8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '9.5px',
+            color: '#475569',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Building2 style={{ width: '12px', height: '12px', color: '#1B44C8' }} />
+            <span style={{ fontWeight: 700 }}>{bankName}:</span>
+            <span dir="ltr" style={{ fontFamily: 'monospace', fontWeight: 800, color: '#0F1B44' }}>{accountNumber}</span>
+          </div>
+          <div style={{ color: '#64748B' }}>
+            ({accountTitle})
+          </div>
         </div>
       </div>
     </div>

@@ -27,6 +27,7 @@ export const SuppliersView: React.FC = () => {
 
   // Bulk selection
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<number[]>([]);
+  const [sheetTotals, setSheetTotals] = useState<{ liters: number; amount: number; paid: number; due: number } | null>(null);
 
   // purchase + payment inputs
   const [pDate, setPDate] = useState(todayStr());
@@ -73,8 +74,14 @@ export const SuppliersView: React.FC = () => {
       t.paid += s.month_paid;
       t.due += s.total_amount - s.total_paid;
     }
+    if (tab === 'sheet' && sheetTotals) {
+      return sheetTotals;
+    }
+    if (sheetTotals && t.liters === 0 && sheetTotals.liters > 0) {
+      return sheetTotals;
+    }
     return t;
-  }, [list]);
+  }, [list, tab, sheetTotals]);
 
   const saveSupplier = async () => {
     if (!form || !window.electronAPI) return;
@@ -271,9 +278,9 @@ export const SuppliersView: React.FC = () => {
         {([['list', ur ? 'سپلائرز فہرست' : 'Suppliers'], ['sheet', ur ? 'ماہانہ شیٹ' : 'Monthly Sheet']] as const).map(([id, label]) => (
           <button
             key={id}
-            onClick={() => {
+            onClick={async () => {
               setTab(id);
-              load();
+              await load();
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
               tab === id
@@ -301,7 +308,8 @@ export const SuppliersView: React.FC = () => {
         ))}
       </div>
 
-      {tab === 'sheet' ? (
+      {/* Sheet view: kept mounted so in-progress edits and shift state are never lost */}
+      <div style={{ display: tab === 'sheet' ? 'block' : 'none' }}>
         <SupplierSheetView
           month={month}
           onMonthChange={(m) => {
@@ -309,9 +317,13 @@ export const SuppliersView: React.FC = () => {
             load();
           }}
           onUpdate={load}
+          onTotalsChange={setSheetTotals}
         />
-      ) : (
-        <>
+      </div>
+
+      {/* List view */}
+      <div style={{ display: tab === 'list' ? 'block' : 'none' }}>
+        <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200/80 p-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Truck className="w-5 h-5 text-brand-600" />
@@ -362,6 +374,7 @@ export const SuppliersView: React.FC = () => {
                         className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                       />
                     </th>
+                    <th className="px-2 py-3 w-12 text-center font-bold">#</th>
                     <th className="px-3 py-3 font-bold">{ur ? 'سپلائر' : 'Supplier'}</th>
                     <th className="px-3 py-3 font-bold text-right">{ur ? 'اس ماہ لیٹر' : 'Month Ltr'}</th>
                     <th className="px-3 py-3 font-bold text-right">{ur ? 'اس ماہ رقم' : 'Month Amount'}</th>
@@ -371,7 +384,7 @@ export const SuppliersView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.map((s) => {
+                  {list.map((s, idx) => {
                     const due = s.total_amount - s.total_paid;
                     const isSelected = selectedSupplierIds.includes(s.id);
                     return (
@@ -396,6 +409,9 @@ export const SuppliersView: React.FC = () => {
                             }}
                             className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
                           />
+                        </td>
+                        <td className="px-2 py-3 text-center font-black text-slate-500 text-xs">
+                          #{idx + 1}
                         </td>
                         <td className="px-3 py-3">
                           <div className="font-bold text-slate-800">{s.name}</div>
@@ -427,14 +443,14 @@ export const SuppliersView: React.FC = () => {
                     );
                   })}
                   {list.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">{ur ? 'ابھی کوئی سپلائر نہیں' : 'No suppliers yet'}</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400">{ur ? 'ابھی کوئی سپلائر نہیں' : 'No suppliers yet'}</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      </div>
 
       {form && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">

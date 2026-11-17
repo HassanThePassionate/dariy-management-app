@@ -1,20 +1,24 @@
 import React from 'react';
 
-interface CowLogoProps {
+export interface CowLogoProps {
   className?: string;
-  variant?: 'black' | 'white' | 'badge-green' | 'badge-white' | 'svg';
+  variant?: 'black' | 'white' | 'badge-green' | 'badge-white' | 'badge-blue' | 'svg';
   alt?: string;
+  size?: number;
+  style?: React.CSSProperties;
 }
 
 export const CowLogo: React.FC<CowLogoProps> = ({
-  className = 'w-8 h-8',
+  className = 'w-10 h-10',
   variant = 'black',
   alt = 'Milk Shop Logo',
+  size,
+  style,
 }) => {
   // SVG Vector Fallback if image fails or for crisp vector icons
   if (variant === 'svg') {
     return (
-      <svg viewBox="0 0 64 64" className={className} xmlns="http://www.w3.org/2000/svg">
+      <svg viewBox="0 0 64 64" className={className} style={{ width: size, height: size, ...style }} xmlns="http://www.w3.org/2000/svg">
         <ellipse cx="10" cy="22" rx="7" ry="9" fill="currentColor" opacity="0.95" />
         <ellipse cx="54" cy="22" rx="7" ry="9" fill="currentColor" opacity="0.95" />
         <ellipse cx="32" cy="34" rx="22" ry="19" fill="currentColor" />
@@ -33,20 +37,20 @@ export const CowLogo: React.FC<CowLogoProps> = ({
     );
   }
 
-  let src = '/cow-logo.png';
-  if (variant === 'white') {
-    src = '/cow-logo-white.png';
-  } else if (variant === 'badge-green') {
-    src = '/cow-badge-green.png';
-  } else if (variant === 'badge-white') {
-    src = '/cow-badge-white.png';
-  }
+  const src = '/cow-logo.png';
 
   return (
     <img
       src={src}
       alt={alt}
-      className={`object-contain select-none pointer-events-none ${className}`}
+      style={{
+        width: size ? `${size}px` : undefined,
+        height: size ? `${size}px` : undefined,
+        maxWidth: size ? `${size}px` : '100%',
+        maxHeight: size ? `${size}px` : '100%',
+        ...style,
+      }}
+      className={`rounded-full object-contain select-none pointer-events-none ${className}`}
       loading="eager"
     />
   );
