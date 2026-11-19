@@ -10,28 +10,29 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #f1f5f9;
+    background-color: #030712;
+    color: #f8fafc;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 }
 
-/* Custom scrollbars */
+/* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #050c1e;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #1e3a8a;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #2563eb;
 }
 
 /* RTL Urdu Font support */
@@ -62,7 +63,129 @@
   animation: milkPulse 1.8s ease-in-out infinite;
 }
 
-/* Print bill styling */
+/* ==========================================================================
+   GLOBAL DARK THEME TRANSFORMATIONS (Matches Screenshot Palette)
+   ========================================================================== */
+
+/* Cards, Panels & Modals */
+.bg-white:not(.printable-bill):not(.printable-bill *) {
+  background-color: #081028 !important;
+  border-color: rgba(59, 130, 246, 0.22) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Inner containers and secondary backgrounds */
+.bg-slate-50:not(.printable-bill):not(.printable-bill *),
+.bg-slate-100:not(.printable-bill):not(.printable-bill *) {
+  background-color: #0c163b !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
+  color: #f1f5f9 !important;
+}
+
+.bg-slate-200:not(.printable-bill):not(.printable-bill *) {
+  background-color: #111e4f !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Colored soft card backgrounds mapped to dark neon glass */
+.bg-blue-50:not(.printable-bill):not(.printable-bill *),
+.bg-\[\#f0f7ff\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #0a1538 !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.bg-emerald-50:not(.printable-bill):not(.printable-bill *),
+.bg-\[\#f0fdf4\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #061e1f !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.bg-amber-50:not(.printable-bill):not(.printable-bill *),
+.bg-\[\#fff7ed\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #21190a !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+.bg-purple-50:not(.printable-bill):not(.printable-bill *),
+.bg-\[\#faf5ff\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #1b1030 !important;
+  border-color: rgba(168, 85, 247, 0.3) !important;
+}
+
+.bg-rose-50:not(.printable-bill):not(.printable-bill *) {
+  background-color: #260f17 !important;
+  border-color: rgba(244, 63, 94, 0.3) !important;
+}
+
+/* Text Colors */
+.text-slate-900:not(.printable-bill):not(.printable-bill *),
+.text-slate-800:not(.printable-bill):not(.printable-bill *) {
+  color: #ffffff !important;
+}
+
+.text-slate-700:not(.printable-bill):not(.printable-bill *) {
+  color: #e2e8f0 !important;
+}
+
+.text-slate-600:not(.printable-bill):not(.printable-bill *) {
+  color: #cbd5e1 !important;
+}
+
+.text-slate-500:not(.printable-bill):not(.printable-bill *) {
+  color: #94a3b8 !important;
+}
+
+.text-slate-400:not(.printable-bill):not(.printable-bill *) {
+  color: #64748b !important;
+}
+
+/* Border Overrides */
+.border-slate-100:not(.printable-bill):not(.printable-bill *),
+.border-slate-200:not(.printable-bill):not(.printable-bill *),
+.border-slate-200\/60:not(.printable-bill):not(.printable-bill *),
+.border-slate-200\/80:not(.printable-bill):not(.printable-bill *),
+.border-slate-300:not(.printable-bill):not(.printable-bill *) {
+  border-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* Inputs, Selects, Textareas across all modal forms */
+input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *),
+select:not(.printable-bill *),
+textarea:not(.printable-bill *) {
+  background-color: #0c163b !important;
+  border-color: rgba(59, 130, 246, 0.35) !important;
+  color: #ffffff !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #64748b !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: #00d2ff !important;
+  box-shadow: 0 0 12px rgba(0, 210, 255, 0.3) !important;
+  outline: none !important;
+}
+
+/* Tables in all views */
+table thead th:not(.printable-bill *) {
+  border-color: rgba(59, 130, 246, 0.2) !important;
+  color: #94a3b8 !important;
+}
+
+table tbody tr:not(.printable-bill *) {
+  border-color: rgba(59, 130, 246, 0.12) !important;
+}
+
+table tbody tr:hover:not(.printable-bill *) {
+  background-color: rgba(30, 64, 175, 0.15) !important;
+}
+
+/* Print bill styling (Preserves clean physical receipt printing) */
 @media print {
   body * {
     visibility: hidden;

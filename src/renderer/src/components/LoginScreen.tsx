@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { User, Lock, Eye, EyeOff, Check, ShieldCheck } from 'lucide-react';
+import { Phone, Lock, Eye, EyeOff, ShieldCheck, Check } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { CowLogo } from './CowLogo';
+import { MilkSplashGraphic } from './MilkSplashGraphic';
+import logoUrl from '../assets/logo.png';
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
@@ -9,7 +10,9 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const { t, language, setLanguage } = useLanguage();
-  const [username, setUsername] = useState('admin');
+  const ur = language === 'ur';
+
+  const [mobileNumber, setMobileNumber] = useState('03001234567');
   const [password, setPassword] = useState('admin');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -21,15 +24,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setError('');
 
-    const u = username.trim();
+    const u = mobileNumber.trim();
     const p = password.trim();
 
     if (!u) {
-      setError(language === 'ur' ? 'براہ کرم یوزر نیم درج کریں' : 'Please enter username');
+      setError(ur ? 'براہ کرم موبائل نمبر یا یوزر نیم درج کریں' : 'Please enter mobile number or username');
       return;
     }
     if (!p) {
-      setError(language === 'ur' ? 'براہ کرم پاس ورڈ درج کریں' : 'Please enter password');
+      setError(ur ? 'براہ کرم پاس ورڈ درج کریں' : 'Please enter password');
       return;
     }
 
@@ -40,8 +43,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         const s = await window.electronAPI.getSettings();
         const validUser = (s.admin_username || 'admin').trim().toLowerCase();
         const validPass = (s.admin_password || 'admin').trim();
-        const isDefaultUser = u.toLowerCase() === 'admin' || u === '03001234567';
+        const isDefaultUser =
+          u.toLowerCase() === 'admin' ||
+          u === '03001234567' ||
+          u.replace(/\D/g, '') === '03001234567';
         const isDefaultPass = p === 'admin' || p === '123456' || p === 'admin123';
+
         if (
           (u.toLowerCase() === validUser && p === validPass) ||
           (isDefaultUser && isDefaultPass) ||
@@ -51,6 +58,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           allowed = true;
         }
       } else {
+        // Fallback for development/browser mode
         allowed = true;
       }
 
@@ -58,10 +66,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         setTimeout(() => {
           setIsSubmitting(false);
           onLoginSuccess();
-        }, 350);
+        }, 300);
       } else {
         setIsSubmitting(false);
-        setError(language === 'ur' ? 'غلط یوزر نیم یا پاسورڈ' : 'Invalid username or password');
+        setError(ur ? 'غلط موبائل نمبر یا پاسورڈ' : 'Invalid mobile number or password');
       }
     } catch {
       setIsSubmitting(false);
@@ -70,30 +78,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   };
 
   const handleForgot = () => {
-    setUsername('admin');
+    setMobileNumber('admin');
     setPassword('admin');
     setError('');
     setForgotNotice(true);
   };
 
   return (
-    <div className="min-h-screen bg-brand-600 flex flex-col justify-between items-center px-4 py-8 relative overflow-y-auto">
-      {/* Background milk waves / bubbles decoration */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none opacity-10">
-        <div className="absolute -top-24 -left-24 w-96 h-96 bg-white rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 -right-24 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col justify-between items-center px-4 py-6 relative overflow-x-hidden select-none">
+      {/* Background Top Wave & Cyan Luminous Glow */}
+      <div className="absolute top-0 left-0 right-0 h-80 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[650px] h-[340px] bg-gradient-to-b from-blue-600/25 via-cyan-500/10 to-transparent rounded-[100%] blur-3xl pointer-events-none" />
+        {/* Soft decorative curves */}
+        <svg
+          viewBox="0 0 1440 280"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-full h-auto opacity-30 object-cover"
+        >
+          <path
+            d="M0,64L80,90.7C160,117,320,171,480,181.3C640,192,800,160,960,138.7C1120,117,1280,107,1360,101.3L1440,96L1440,0L1360,0C1280,0,1120,0,960,0C800,0,640,0,480,0C320,0,160,0,80,0L0,0Z"
+            fill="url(#waveGrad)"
+          />
+          <defs>
+            <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#0066ff" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#00e5ff" stopOpacity="0.1" />
+            </linearGradient>
+          </defs>
+        </svg>
       </div>
 
       {/* Top Language Switcher */}
-      <div className="w-full max-w-sm flex justify-end z-10 mb-2">
-        <div className="inline-flex bg-white/20 backdrop-blur-md rounded-full p-1 border border-white/30 text-xs font-semibold">
+      <div className="w-full max-w-sm flex justify-end z-10 mb-1">
+        <div className="inline-flex bg-[#081028]/80 backdrop-blur-md rounded-full p-1 border border-blue-500/30 text-xs font-semibold shadow-[0_0_15px_rgba(0,102,255,0.15)]">
           <button
             type="button"
             onClick={() => setLanguage('en')}
             className={`px-3 py-1 rounded-full transition-all ${
               language === 'en'
-                ? 'bg-white text-brand-700 shadow-sm font-bold'
-                : 'text-white hover:text-white/80'
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-sm font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             English
@@ -103,8 +128,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             onClick={() => setLanguage('ur')}
             className={`px-3 py-1 rounded-full transition-all font-urdu ${
               language === 'ur'
-                ? 'bg-white text-brand-700 shadow-sm font-bold'
-                : 'text-white hover:text-white/80'
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-sm font-bold'
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             اردو
@@ -112,119 +137,127 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         </div>
       </div>
 
-      {/* Main Content Container */}
-      <div className="w-full max-w-sm flex flex-col items-center z-10 my-auto">
-        {/* Top Milk Shop Illustration */}
-        <div className="flex flex-col items-center mb-6 text-center">
-          <div className="w-32 h-32 mb-3 flex items-center justify-center bg-white rounded-full border-4 border-white/40 shadow-2xl p-2 shrink-0">
-            <CowLogo variant="white" className="w-full h-full object-contain" />
+      {/* Main Container */}
+      <div className="w-full max-w-[390px] flex flex-col items-center z-10 my-auto">
+        {/* Milk Bottle Graphic with Milk Splash Logo */}
+        <div className="flex flex-col items-center mb-5 text-center">
+          <div className="relative mb-2">
+            <div className="absolute inset-0 bg-blue-500/25 rounded-full blur-2xl transform scale-95" />
+            <img
+              src={logoUrl}
+              alt="Qari Zafar Milk Shop"
+              className="relative w-64 h-auto max-h-44 object-contain filter drop-shadow-[0_12px_25px_rgba(0,102,255,0.45)] select-none pointer-events-none"
+            />
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-sm">
-            {t.appName}
+
+          {/* App Title */}
+          <h1 className="text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_10px_rgba(0,102,255,0.4)]">
+            Milk Shop
           </h1>
-          <p className="text-blue-100 text-sm mt-1 font-medium">
-            {t.appSubtitle}
+          <p className="text-blue-200/70 text-xs mt-1 font-medium">
+            Manage your milk shop easily
           </p>
         </div>
 
-        {/* White Card: Shop Login */}
-        <div className="w-full bg-white rounded-3xl shadow-2xl p-6 sm:p-7 border border-white/30 backdrop-blur-sm">
+        {/* Shop Login Card */}
+        <div className="w-full bg-[#081028]/90 rounded-3xl p-6 sm:p-7 border border-blue-500/25 shadow-[0_8px_30px_rgba(0,0,0,0.5),0_0_25px_rgba(0,102,255,0.12)] backdrop-blur-md">
+          {/* Card Header */}
           <div className="text-center mb-6">
-            <h2 className="text-xl font-bold text-slate-800 tracking-tight">
-              {t.shopLogin}
+            <h2 className="text-xl font-black text-white tracking-tight">
+              {ur ? 'دکان لاگ ان' : 'Shop Login'}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {t.loginSubtitle}
+              {ur ? 'اپنا موبائل نمبر اور پاس ورڈ درج کریں' : 'Enter your mobile number and password'}
             </p>
           </div>
 
+          {/* Notice after clicking Forgot Password */}
           {forgotNotice && (
-            <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold text-center space-y-1">
-              <div>{language === 'ur' ? '✓ ڈیفالٹ لاگ ان خودکار درج کر دیا گیا ہے:' : '✓ Default login auto-filled:'}</div>
-              <div className="text-[11px] font-mono text-emerald-900 bg-white py-1 px-2 rounded-lg border border-emerald-100">
-                admin / admin &nbsp;({language === 'ur' ? 'یا' : 'or'} 03001234567 / 123456)
-              </div>
-              <div className="text-[10px] text-emerald-700">
-                {language === 'ur' ? 'اب نیچے "لاگ ان کریں" بٹن دبائیں۔' : 'Now click the Login button below.'}
+            <div className="mb-4 p-3 rounded-2xl bg-blue-950/60 border border-cyan-500/40 text-cyan-200 text-xs font-bold text-center space-y-1">
+              <div>{ur ? '✓ ڈیفالٹ لاگ ان خودکار درج کر دیا گیا ہے:' : '✓ Default login auto-filled:'}</div>
+              <div className="text-[11px] font-mono text-cyan-300 bg-[#060c22] py-1 px-2 rounded-lg border border-cyan-500/20">
+                admin / admin &nbsp;({ur ? 'یا' : 'or'} 03001234567 / 123456)
               </div>
             </div>
           )}
 
+          {/* Error message */}
           {error && (
-            <div className="mb-4 p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs font-medium text-center">
+            <div className="mb-4 p-2.5 rounded-xl bg-rose-950/50 border border-rose-500/50 text-rose-300 text-xs font-semibold text-center">
               {error}
             </div>
           )}
 
+          {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username Field */}
+            {/* Mobile Number / Username Field */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                {language === 'ur' ? 'یوزر نیم (Username)' : 'Username'}
-              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <User className="w-4 h-4" />
+                  <Phone className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-slate-800 placeholder-slate-400 bg-slate-50/50 font-bold"
+                  value={mobileNumber}
+                  onChange={(e) => setMobileNumber(e.target.value)}
+                  placeholder={ur ? 'موبائل نمبر یا یوزر نیم' : 'Mobile Number'}
+                  className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-[#0c163b] border border-blue-500/30 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all font-medium"
                 />
               </div>
             </div>
 
             {/* Password Field */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                {t.password}
-              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock className="w-4 h-4" />
+                  <Lock className="w-4 h-4 text-slate-400" />
                 </div>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t.passwordPlaceholder}
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-slate-800 placeholder-slate-400 bg-slate-50/50"
+                  placeholder={ur ? 'پاس ورڈ' : 'Password'}
+                  className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#0c163b] border border-blue-500/30 text-white placeholder-slate-400 text-sm focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/50 transition-all font-medium"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Remember Me Checkbox */}
+            {/* Remember Me */}
             <div className="flex items-center justify-between pt-1">
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
-                />
-                <span className="text-xs text-slate-600 font-medium">{t.rememberMe}</span>
+                <div
+                  onClick={() => setRememberMe(!rememberMe)}
+                  className={`w-4 h-4 rounded flex items-center justify-center transition-colors border ${
+                    rememberMe
+                      ? 'bg-blue-600 border-cyan-400 text-white'
+                      : 'bg-[#0c163b] border-blue-500/40'
+                  }`}
+                >
+                  {rememberMe && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
+                <span className="text-xs text-slate-300 font-medium">
+                  {ur ? 'مجھے یاد رکھیں' : 'Remember Me'}
+                </span>
               </label>
             </div>
 
-            {/* Submit Button */}
+            {/* Glowing LOGIN Button */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-brand-500/40 disabled:opacity-75 flex items-center justify-center gap-2"
+              className="w-full mt-3 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 active:scale-[0.99] text-white font-extrabold text-sm tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(0,128,255,0.4)] disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
             >
               {isSubmitting ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <span>{t.login}</span>
+                <span>{ur ? 'لاگ ان کریں' : 'LOGIN'}</span>
               )}
             </button>
 
@@ -233,26 +266,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <button
                 type="button"
                 onClick={handleForgot}
-                className="text-xs text-brand-600 hover:text-brand-700 hover:underline font-bold cursor-pointer"
+                className="text-xs text-cyan-400 hover:text-cyan-300 hover:underline font-semibold cursor-pointer transition-colors"
               >
-                {t.forgotPassword} ({language === 'ur' ? 'ڈیفالٹ لاگ ان بھریں' : 'Auto-fill default login'})
+                {ur ? 'پاس ورڈ بھول گئے؟' : 'Forgot Password?'}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Demo Credentials Hint */}
+        {/* Local SQLite Auth Badge */}
         <div className="mt-4 text-center">
-          <p className="text-xs text-blue-100/90 font-medium flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-white/80" />
-            <span>SQLite Local Authentication • Pre-filled for Step 1</span>
+          <p className="text-[11px] text-blue-200/60 font-medium flex items-center justify-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span>SQLite Local Secure Authentication</span>
           </p>
         </div>
       </div>
 
-      {/* Screen label matching mockup */}
-      <div className="text-xs text-blue-200/80 font-medium pb-1">
-        1. Milk Shop Entry (Login)
+      {/* Subtle bottom wave glow */}
+      <div className="w-full text-center text-[11px] text-slate-500 z-10 pt-2">
+        Qari Zafar Milk Shop • v1.0
       </div>
     </div>
   );

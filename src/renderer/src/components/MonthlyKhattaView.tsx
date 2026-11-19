@@ -154,13 +154,14 @@ const KhataRow = React.memo<KhataRowProps>(
         {/* Day cells */}
         {Array.from({ length: totalDays }, (_, i) => i + 1).map((day) => {
           const value = rowEntries[day];
+          const isZero = Number(value) === 0;
           const isWeekend = weekdays[day - 1] === 'Sun';
 
           return (
             <td
               key={day}
-              className={`px-0 py-0 border-r border-slate-100 text-center ${
-                isWeekend ? 'bg-rose-50/40' : ''
+              className={`px-0 py-0 border-r border-slate-100/50 text-center ${
+                isWeekend ? 'bg-rose-500/10' : ''
               }`}
               style={{ minWidth: DAY_COL_WIDTH, width: DAY_COL_WIDTH }}
             >
@@ -168,19 +169,31 @@ const KhataRow = React.memo<KhataRowProps>(
                 key={`${version}-${day}`}
                 type="text"
                 inputMode="decimal"
-                defaultValue={value ? formatQty(value) : ''}
+                defaultValue={isZero ? '✕' : (value ? formatQty(value) : '')}
                 data-r={customer.id}
                 data-d={day}
                 data-month={monthKey}
                 onChange={(e) => onCellChange(customer.id, day, e.target.value)}
-                onBlur={(e) => {
-                  const v = parseNumber(e.target.value);
-                  e.target.value = v > 0 ? formatQty(v) : '';
+                onFocus={(e) => {
+                  if (e.target.value === '✕' || e.target.value === '0') {
+                    e.target.select();
+                  }
                 }}
-                className={`w-full h-7 text-center text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 focus:bg-white ${
-                  value
-                    ? 'bg-emerald-50 text-emerald-800'
-                    : 'bg-transparent text-slate-700 hover:bg-slate-50'
+                onBlur={(e) => {
+                  const val = e.target.value.trim().toLowerCase();
+                  if (val === '0' || val === 'x' || val === '✕') {
+                    e.target.value = '✕';
+                  } else {
+                    const v = parseNumber(val);
+                    e.target.value = v > 0 ? formatQty(v) : '';
+                  }
+                }}
+                className={`w-full h-7 text-center text-[11px] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 transition-colors ${
+                  isZero
+                    ? '!bg-rose-600/25 !text-rose-400 !border !border-rose-500/60 font-black shadow-[inset_0_0_8px_rgba(244,63,94,0.3)]'
+                    : value
+                    ? '!bg-emerald-600/20 !text-emerald-300 font-bold !border !border-emerald-500/30'
+                    : 'bg-transparent text-slate-300 hover:bg-white/5'
                 }`}
               />
             </td>
@@ -545,25 +558,50 @@ export const MonthlyKhattaView: React.FC = () => {
   /* ---------------- editing ---------------- */
 
   const persistEntry = useCallback(
-    (customerId: number, day: number, qty: number, timerKey: string) => {
+    (customerId: number, day: number, qty: number, timerKey: string, cleared: boolean = false) => {
       if (saveTimers.current[timerKey]) clearTimeout(saveTimers.current[timerKey]);
       saveTimers.current[timerKey] = setTimeout(async () => {
         try {
           if (window.electronAPI) {
             const date = `${monthKey}-${String(day).padStart(2, '0')}`;
-            await window.electronAPI.setKhataEntry({ customerId, date, quantity: qty });
+            await window.electronAPI.setKhataEntry({ customerId, date, quantity: qty, cleared });
           }
         } catch (err) {
           console.error('Failed to save khata entry:', err);
           showToast('Could not save entry');
         }
-      }, 350);
+      }, 250);
     },
     [monthKey]
   );
 
   const handleCellChange = useCallback(
     (customerId: number, day: number, raw: string) => {
+      const trimmed = raw.trim().toLowerCase();
+
+      // If empty string -> completely clear entry
+      if (trimmed === '') {
+        setEntries((prev) => {
+          const currentRow = prev[customerId] || {};
+          const nextRow = { ...currentRow };
+          delete nextRow[day];
+          return { ...prev, [customerId]: nextRow };
+        });
+        persistEntry(customerId, day, 0, `${customerId}-${day}`, true);
+        return;
+      }
+
+      // If user typed 0 or x or X or ✕ -> treat as ZERO / Cross (Red box)
+      if (trimmed === '0' || trimmed === 'x' || trimmed === '✕') {
+        setEntries((prev) => {
+          const currentRow = prev[customerId] || {};
+          const nextRow = { ...currentRow, [day]: 0 };
+          return { ...prev, [customerId]: nextRow };
+        });
+        persistEntry(customerId, day, 0, `${customerId}-${day}`, false);
+        return;
+      }
+
       const cleaned = raw.replace(/[^0-9.]/g, '');
       const qty = parseNumber(cleaned);
 
@@ -572,11 +610,11 @@ export const MonthlyKhattaView: React.FC = () => {
         if ((currentRow[day] || 0) === qty) return prev;
         const nextRow = { ...currentRow };
         if (qty > 0) nextRow[day] = qty;
-        else delete nextRow[day];
+        else nextRow[day] = 0;
         return { ...prev, [customerId]: nextRow };
       });
 
-      persistEntry(customerId, day, qty, `${customerId}-${day}`);
+      persistEntry(customerId, day, qty, `${customerId}-${day}`, false);
     },
     [persistEntry]
   );
@@ -1123,11 +1161,11 @@ export const MonthlyKhattaView: React.FC = () => {
         </div>
 
         {/* Filter and Shift Selection Toolbar */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-slate-100 pt-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-t border-blue-500/20 pt-3">
           {/* Shift selector pills */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-            <span className="text-[10px] font-extrabold text-slate-500 px-2 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+          <div className="flex items-center gap-1 bg-[#091438] border border-blue-500/30 p-1 rounded-xl shadow-[0_0_12px_rgba(0,102,255,0.15)]">
+            <span className="text-[10px] font-extrabold text-slate-300 px-2 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-cyan-400" />
               <span>{language === 'ur' ? 'شفٹ:' : 'Shift:'}</span>
             </span>
             {([
@@ -1145,11 +1183,11 @@ export const MonthlyKhattaView: React.FC = () => {
                   onClick={() => setShiftFilter(s.id)}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
                     active
-                      ? 'bg-brand-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_0_10px_rgba(0,102,255,0.4)]'
+                      : 'text-slate-300 hover:text-white hover:bg-blue-600/20'
                   }`}
                 >
-                  {Icon && <Icon className="w-3 h-3" />}
+                  {Icon && <Icon className="w-3 h-3 text-amber-400" />}
                   <span>{s.label}</span>
                 </button>
               );
@@ -1166,8 +1204,8 @@ export const MonthlyKhattaView: React.FC = () => {
                   onClick={() => setFilterTab(tab.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
                     active
-                      ? 'bg-slate-800 text-white shadow-2xs'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_0_10px_rgba(0,102,255,0.4)]'
+                      : 'bg-[#0b1437] border border-blue-500/20 text-slate-300 hover:text-white hover:bg-blue-600/20'
                   }`}
                 >
                   <span>{tab.label}</span>

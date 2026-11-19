@@ -21,7 +21,7 @@ var api = {
   getDbInfo: () => import_electron.ipcRenderer.invoke("db:getInfo"),
   getSettings: () => import_electron.ipcRenderer.invoke("settings:getAll"),
   setSetting: (key, value) => import_electron.ipcRenderer.invoke("settings:set", key, value),
-  getDashboardStats: () => import_electron.ipcRenderer.invoke("dashboard:getStats"),
+  getDashboardStats: (month) => import_electron.ipcRenderer.invoke("dashboard:getStats", month),
   getTasks: () => import_electron.ipcRenderer.invoke("tasks:getAll"),
   addTask: (title, status) => import_electron.ipcRenderer.invoke("tasks:add", title, status),
   deleteTask: (id) => import_electron.ipcRenderer.invoke("tasks:delete", id),
@@ -101,7 +101,54 @@ var api = {
   disconnectWhatsApp: () => import_electron.ipcRenderer.invoke("whatsapp:disconnect"),
   getVehicles: () => import_electron.ipcRenderer.invoke("vehicles:list"),
   addVehicle: (v) => import_electron.ipcRenderer.invoke("vehicles:add", v),
-  deleteVehicle: (id) => import_electron.ipcRenderer.invoke("vehicles:delete", id)
+  deleteVehicle: (id) => import_electron.ipcRenderer.invoke("vehicles:delete", id),
+  // Cloud & WhatsApp Cloud API implementations
+  getCloudConfig: () => import_electron.ipcRenderer.invoke("cloud:getConfig"),
+  saveCloudConfig: (c) => import_electron.ipcRenderer.invoke("cloud:saveConfig", c),
+  getCloudConnectionStatus: () => import_electron.ipcRenderer.invoke("cloud:getConnectionStatus"),
+  performCloudSync: () => import_electron.ipcRenderer.invoke("cloud:sync"),
+  getCloudSyncMeta: () => import_electron.ipcRenderer.invoke("cloud:getSyncMeta"),
+  createCloudBackup: (notes) => import_electron.ipcRenderer.invoke("cloud:createBackup", notes),
+  cancelCloudBackup: () => import_electron.ipcRenderer.invoke("cloud:cancelBackup"),
+  getCloudBackupHistory: () => import_electron.ipcRenderer.invoke("cloud:getHistory"),
+  restoreCloudBackup: (backupId) => import_electron.ipcRenderer.invoke("cloud:restoreBackup", backupId),
+  getWhatsAppCloudStatus: () => import_electron.ipcRenderer.invoke("whatsapp:getCloudStatus"),
+  sendWhatsAppSingleBill: (payload) => import_electron.ipcRenderer.invoke("whatsapp:sendSingleBill", payload),
+  getWhatsAppLogs: (month) => import_electron.ipcRenderer.invoke("whatsapp:getLogs", month),
+  setWhatsAppConsent: (payload) => import_electron.ipcRenderer.invoke("whatsapp:setConsent", payload),
+  renderBillImage: (data) => import_electron.ipcRenderer.invoke("bill:renderImage", data),
+  // Application Shutdown Lifecycle
+  confirmForceClose: () => import_electron.ipcRenderer.invoke("app:confirmForceClose"),
+  cancelClose: () => import_electron.ipcRenderer.invoke("app:cancelClose"),
+  performCloseBackup: () => import_electron.ipcRenderer.invoke("app:performCloseBackup"),
+  onShowCloseBackupModal: (callback) => {
+    const listener = (_e, data) => callback(data);
+    import_electron.ipcRenderer.on("app:show-close-backup-modal", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("app:show-close-backup-modal", listener);
+    };
+  },
+  onBackupCloseProgress: (callback) => {
+    const listener = (_e, data) => callback(data);
+    import_electron.ipcRenderer.on("backup:close-progress", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("backup:close-progress", listener);
+    };
+  },
+  onBackupProgress: (callback) => {
+    const listener = (_e, data) => callback(data);
+    import_electron.ipcRenderer.on("backup:progress", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("backup:progress", listener);
+    };
+  },
+  onRestoreProgress: (callback) => {
+    const listener = (_e, data) => callback(data);
+    import_electron.ipcRenderer.on("restore:progress", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("restore:progress", listener);
+    };
+  }
 };
 import_electron.contextBridge.exposeInMainWorld("electronAPI", api);
 //# sourceMappingURL=preload.js.map

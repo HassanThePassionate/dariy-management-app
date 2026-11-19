@@ -11,36 +11,50 @@ export interface ElectronAPI {
   }>;
   getSettings: () => Promise<Record<string, string>>;
   setSetting: (key: string, value: string) => Promise<{ success: boolean }>;
-  getDashboardStats: () => Promise<{
+  getDashboardStats: (month?: string) => Promise<{
+    selectedMonth?: string;
     totalMilk: number;
     totalCustomers: number;
     todaySale: number;
+    monthSale?: number;
     totalDue: number;
     todayMilk?: number;
+    todayPosQty?: number;
+    todayKhataQty?: number;
     monthBilled?: number;
     todayPurchased?: number;
     todayPurchaseCost?: number;
+    monthPurchased?: number;
+    monthPurchaseCost?: number;
     stockAvailable?: number;
     stockOpeningToday?: number;
     supplierPayable?: number;
+    suppliersCount?: number;
+    todayExpenses?: number;
+    monthExpenses?: number;
+    gheeStock?: number;
+    gheeProfit?: number;
+    shopperStock?: number;
+    activeRate?: number;
     monthCollected?: number;
-    topDue?: Array<{ id: number; name: string; balance: number }>;
-    recentTransactions: Array<{
-      id: number;
-      date: string;
-      customerName: string;
-      quantity: number;
-      rate: number;
-      totalAmount: number;
-      paymentStatus: 'Paid' | 'Due';
-      notes?: string;
-      created_at: string;
-    }>;
+    topDue?: Array<{ id: number; name: string; phone?: string; balance: number }>;
+    recentTransactions: any[];
   }>;
   getTasks: () => Promise<Array<{ id: number; title: string; status: string; created_at: string }>>;
   addTask: (title: string, status?: string) => Promise<{ id: number; title: string; status: string; success: boolean }>;
   deleteTask: (id: number) => Promise<{ success: boolean }>;
-  getCustomers: () => Promise<Array<{ id: number; name: string; phone: string; address: string; default_rate: number; balance: number; previous_balance: number; sort_order: number }>>;
+  getCustomers: () => Promise<Array<{
+    id: number;
+    name: string;
+    phone: string;
+    address: string;
+    default_rate: number;
+    balance: number;
+    previous_balance: number;
+    sort_order: number;
+    whatsapp_consent?: boolean;
+    whatsapp_opt_out_at?: string;
+  }>>;
   addCustomer: (customer: {
     name: string;
     phone: string;
@@ -49,6 +63,7 @@ export interface ElectronAPI {
     previous_balance?: number;
     shift?: string;
     position?: number;
+    whatsapp_consent?: boolean;
   }) => Promise<{ id: number; success: boolean }>;
   updateCustomer: (customer: {
     id: number;
@@ -59,6 +74,7 @@ export interface ElectronAPI {
     previous_balance?: number;
     shift?: string;
     position?: number;
+    whatsapp_consent?: boolean;
   }) => Promise<{ success: boolean; error?: string }>;
   deleteCustomer: (id: number) => Promise<{ success: boolean }>;
   deleteCustomers: (ids: number[]) => Promise<{ success: boolean; deleted: number }>;
@@ -90,6 +106,7 @@ export interface ElectronAPI {
     customerId: number;
     date: string;
     quantity: number;
+    cleared?: boolean;
   }) => Promise<{ success: boolean; cleared?: boolean; error?: string }>;
   setKhataReceived: (payload: {
     customerId: number;
@@ -155,7 +172,7 @@ export interface ElectronAPI {
   deleteOperator: (id: number) => Promise<{ success: boolean }>;
   changePassword: (p: { currentPassword: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>;
   updateAdminCredentials: (p: { username?: string; password?: string }) => Promise<{ success: boolean; error?: string }>;
-  getPricing: () => Promise<{ currentRate: number; previousRate: number; history: any[] }>;
+  getPricing: () => Promise<{ currentRate: number; previousRate: number; active_rate?: number; history: any[] }>;
   savePricing: (p: { rate: number; effectiveFrom: string; recalculate?: boolean }) => Promise<{ success: boolean; error?: string }>;
   getBackupOverview: () => Promise<any>;
   backupToUsb: (driveLetter?: string) => Promise<{ success: boolean; copiedTo?: string[]; error?: string }>;
@@ -168,13 +185,67 @@ export interface ElectronAPI {
   getVehicles: () => Promise<any[]>;
   addVehicle: (v: { name: string; regNumber: string; type?: string; assignedTo?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteVehicle: (id: number) => Promise<{ success: boolean }>;
+
+  // Cloud & WhatsApp Cloud API
+  getCloudConfig: () => Promise<{ apiUrl: string; apiKey: string; deviceId: string }>;
+  saveCloudConfig: (c: { apiUrl?: string; apiKey?: string; deviceId?: string }) => Promise<{ success: boolean }>;
+  getCloudConnectionStatus: () => Promise<{
+    isOnline: boolean;
+    isBackendReachable: boolean;
+    apiUrl: string;
+    backendVersion?: string;
+    backendComponents?: any;
+    error?: string;
+  }>;
+  performCloudSync: () => Promise<{ success: boolean; counts?: any; serverTimestamp?: string; error?: string }>;
+  getCloudSyncMeta: () => Promise<{ lastSyncAt: string | null; lastError?: string }>;
+  createCloudBackup: (notes?: string) => Promise<{
+    success: boolean;
+    backupId?: string;
+    checksum?: string;
+    sizeBytes?: number;
+    error?: string;
+    cancelled?: boolean;
+  }>;
+  cancelCloudBackup: () => Promise<{ cancelled: boolean }>;
+  getCloudBackupHistory: () => Promise<{ success: boolean; backups?: any[]; error?: string }>;
+  restoreCloudBackup: (backupId: string) => Promise<{ success: boolean; safetyBackupPath?: string; error?: string }>;
+  getWhatsAppCloudStatus: () => Promise<{
+    configured: boolean;
+    connected: boolean;
+    displayPhoneNumber?: string;
+    verifiedName?: string;
+    qualityRating?: string;
+    templateStatus?: string;
+    phoneNumberId?: string;
+    businessAccountId?: string;
+    error?: string;
+  }>;
+  sendWhatsAppSingleBill: (payload: { item: any; settings: any; force?: boolean }) => Promise<{
+    success: boolean;
+    messageId?: string;
+    error?: string;
+    duplicate?: boolean;
+  }>;
+  getWhatsAppLogs: (month: string) => Promise<any[]>;
+  setWhatsAppConsent: (payload: { customerId: number; consent: boolean }) => Promise<{ success: boolean }>;
+  renderBillImage: (data: any) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+
+  // Application Shutdown Lifecycle
+  confirmForceClose: () => Promise<void>;
+  cancelClose: () => Promise<void>;
+  performCloseBackup: () => Promise<any>;
+  onShowCloseBackupModal: (callback: (data: { scenario: 'A' | 'B' | 'C'; error?: string }) => void) => () => void;
+  onBackupCloseProgress: (callback: (data: { stage: string; percent?: number }) => void) => () => void;
+  onBackupProgress: (callback: (data: { stage: string; percent?: number }) => void) => () => void;
+  onRestoreProgress: (callback: (data: { stage: string; percent?: number }) => void) => () => void;
 }
 
 const api: ElectronAPI = {
   getDbInfo: () => ipcRenderer.invoke('db:getInfo'),
   getSettings: () => ipcRenderer.invoke('settings:getAll'),
   setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
-  getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
+  getDashboardStats: (month?: string) => ipcRenderer.invoke('dashboard:getStats', month),
   getTasks: () => ipcRenderer.invoke('tasks:getAll'),
   addTask: (title, status) => ipcRenderer.invoke('tasks:add', title, status),
   deleteTask: (id) => ipcRenderer.invoke('tasks:delete', id),
@@ -255,6 +326,55 @@ const api: ElectronAPI = {
   getVehicles: () => ipcRenderer.invoke('vehicles:list'),
   addVehicle: (v) => ipcRenderer.invoke('vehicles:add', v),
   deleteVehicle: (id) => ipcRenderer.invoke('vehicles:delete', id),
+
+  // Cloud & WhatsApp Cloud API implementations
+  getCloudConfig: () => ipcRenderer.invoke('cloud:getConfig'),
+  saveCloudConfig: (c) => ipcRenderer.invoke('cloud:saveConfig', c),
+  getCloudConnectionStatus: () => ipcRenderer.invoke('cloud:getConnectionStatus'),
+  performCloudSync: () => ipcRenderer.invoke('cloud:sync'),
+  getCloudSyncMeta: () => ipcRenderer.invoke('cloud:getSyncMeta'),
+  createCloudBackup: (notes) => ipcRenderer.invoke('cloud:createBackup', notes),
+  cancelCloudBackup: () => ipcRenderer.invoke('cloud:cancelBackup'),
+  getCloudBackupHistory: () => ipcRenderer.invoke('cloud:getHistory'),
+  restoreCloudBackup: (backupId) => ipcRenderer.invoke('cloud:restoreBackup', backupId),
+  getWhatsAppCloudStatus: () => ipcRenderer.invoke('whatsapp:getCloudStatus'),
+  sendWhatsAppSingleBill: (payload) => ipcRenderer.invoke('whatsapp:sendSingleBill', payload),
+  getWhatsAppLogs: (month) => ipcRenderer.invoke('whatsapp:getLogs', month),
+  setWhatsAppConsent: (payload) => ipcRenderer.invoke('whatsapp:setConsent', payload),
+  renderBillImage: (data) => ipcRenderer.invoke('bill:renderImage', data),
+
+  // Application Shutdown Lifecycle
+  confirmForceClose: () => ipcRenderer.invoke('app:confirmForceClose'),
+  cancelClose: () => ipcRenderer.invoke('app:cancelClose'),
+  performCloseBackup: () => ipcRenderer.invoke('app:performCloseBackup'),
+  onShowCloseBackupModal: (callback) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('app:show-close-backup-modal', listener);
+    return () => {
+      ipcRenderer.removeListener('app:show-close-backup-modal', listener);
+    };
+  },
+  onBackupCloseProgress: (callback) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('backup:close-progress', listener);
+    return () => {
+      ipcRenderer.removeListener('backup:close-progress', listener);
+    };
+  },
+  onBackupProgress: (callback) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('backup:progress', listener);
+    return () => {
+      ipcRenderer.removeListener('backup:progress', listener);
+    };
+  },
+  onRestoreProgress: (callback) => {
+    const listener = (_e: any, data: any) => callback(data);
+    ipcRenderer.on('restore:progress', listener);
+    return () => {
+      ipcRenderer.removeListener('restore:progress', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);

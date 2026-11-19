@@ -1,8 +1,23 @@
-import { ipcMain, app, shell, dialog } from 'electron';
+import { ipcMain, app, shell, dialog, BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { getDatabase, getDatabasePath } from './database';
+import { getCloudConfig, saveCloudConfig } from '../cloud/cloudConfig';
+import { getConnectionStatus } from '../cloud/connectivity';
+import { performCloudSync, getLocalSyncMeta } from '../cloud/cloudSync';
+import {
+  createAndUploadCloudBackup,
+  cancelActiveBackup,
+  getCloudBackupHistory,
+  restoreCloudBackup,
+} from '../cloud/cloudBackup';
+import {
+  getWhatsAppCloudStatus,
+  sendSingleCustomerBill,
+  getLocalWhatsAppBillLogs,
+} from '../cloud/whatsappClient';
+import { generateBillImage } from '../cloud/billImageGenerator';
 
 export function registerIpcHandlers(): void {
   // 1. Database Info & Health Check
@@ -129,16 +144,20 @@ export function registerIpcHandlers(): void {
   });
 
   // 4. Dashboard Stats IPC
-  ipcMain.handle('dashboard:getStats', async () => {
+  ipcMain.handle('dashboard:getStats', async (_event, customMonthKey?: string) => {
     const db = getDatabase();
 
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
-    const monthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-    const todayKey = `${monthKey}-${pad(now.getDate())}`;
-    const nextMonthKey = now.getMonth() === 11
-      ? `${now.getFullYear() + 1}-01`
-      : `${now.getFullYear()}-${pad(now.getMonth() + 2)}`;
+    const monthKey = customMonthKey && /^\d{4}-\d{2}$/.test(customMonthKey)
+      ? customMonthKey
+      : `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const todayKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const [mY, mM] = monthKey.split('-').map(Number);
+    const nextMonthKey = mM === 12
+      ? `${mY + 1}-01`
+      : `${mY}-${pad(mM + 1)}`;
 
     const customersCount = (db.prepare('SELECT COUNT(*) as c FROM customers').get() as any)?.c || 0;
 
@@ -217,10 +236,11 @@ export function registerIpcHandlers(): void {
     todaySale += wToday.a;
 
     const stockToday = computeStock(db, todayKey)[todayKey];
-    const buyToday = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE date = ?", todayKey);
+    const buyToday = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE TRIM(date) = TRIM(?) AND supplier_id IN (SELECT id FROM suppliers)", todayKey);
+    const buyMonth = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE date LIKE ? AND supplier_id IN (SELECT id FROM suppliers)", `${monthKey}-%`);
     const supplierPayable =
-      (w("SELECT COALESCE(SUM(total),0) a FROM supplier_purchases").a || 0) -
-      (w("SELECT COALESCE(SUM(amount),0) a FROM supplier_payments").a || 0);
+      (w("SELECT COALESCE(SUM(total),0) a FROM supplier_purchases WHERE supplier_id IN (SELECT id FROM suppliers)").a || 0) -
+      (w("SELECT COALESCE(SUM(amount),0) a FROM supplier_payments WHERE supplier_id IN (SELECT id FROM suppliers)").a || 0);
 
     // Expenses
     const todayExpenses = (w("SELECT COALESCE(SUM(amount), 0) a FROM expenses WHERE date = ?", todayKey) as any)?.a || 0;
@@ -342,9 +362,11 @@ export function registerIpcHandlers(): void {
     });
 
     return {
+      selectedMonth: monthKey,
       totalMilk: monthMilk,
       totalCustomers: customersCount,
       todaySale: Math.round(todaySale),
+      monthSale: Math.round(monthBilled),
       totalDue: Math.round(totalDue),
       todayMilk,
       todayPosQty,
@@ -352,6 +374,8 @@ export function registerIpcHandlers(): void {
       monthBilled: Math.round(monthBilled),
       todayPurchased: buyToday.q,
       todayPurchaseCost: Math.round(buyToday.a),
+      monthPurchased: buyMonth.q,
+      monthPurchaseCost: Math.round(buyMonth.a),
       stockAvailable: stockToday ? stockToday.closing : 0,
       stockOpeningToday: stockToday ? stockToday.opening : 0,
       supplierPayable: Math.round(supplierPayable),
@@ -384,13 +408,14 @@ export function registerIpcHandlers(): void {
       previous_balance?: number;
       shift?: string;
       position?: number; // 1-based row the customer should occupy
+      whatsapp_consent?: boolean;
     }
   ) => {
     const db = getDatabase();
 
     const insert = db.prepare(`
-      INSERT INTO customers (name, phone, address, default_rate, balance, previous_balance, sort_order, shift)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, phone, address, default_rate, balance, previous_balance, sort_order, shift, whatsapp_consent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const maxOrder = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) as m FROM customers').get() as { m: number }).m;
@@ -402,6 +427,7 @@ export function registerIpcHandlers(): void {
       Number.isFinite(requested) && requested >= 1 ? Math.min(Math.floor(requested), total + 1) : maxOrder + 1;
 
     const previousBalance = Number(customer.previous_balance) || 0;
+    const consent = customer.whatsapp_consent !== undefined ? (customer.whatsapp_consent ? 1 : 0) : 1;
 
     const run = db.transaction(() => {
       // Push every customer at or below the chosen row one step down
@@ -415,7 +441,8 @@ export function registerIpcHandlers(): void {
         previousBalance,
         previousBalance,
         position,
-        normShift(customer.shift)
+        normShift(customer.shift),
+        consent
       );
 
       return result.lastInsertRowid;
@@ -436,6 +463,7 @@ export function registerIpcHandlers(): void {
       previous_balance?: number;
       shift?: string;
       position?: number;
+      whatsapp_consent?: boolean;
     }
   ) => {
     const db = getDatabase();
@@ -463,9 +491,13 @@ export function registerIpcHandlers(): void {
         `).run(customer.id, thisMonth, newRate);
       }
 
+      const consent = customer.whatsapp_consent !== undefined
+        ? (customer.whatsapp_consent ? 1 : 0)
+        : (current.whatsapp_consent ?? 1);
+
       db.prepare(`
         UPDATE customers
-        SET name = ?, phone = ?, address = ?, default_rate = ?, previous_balance = ?, shift = ?
+        SET name = ?, phone = ?, address = ?, default_rate = ?, previous_balance = ?, shift = ?, whatsapp_consent = ?
         WHERE id = ?
       `).run(
         customer.name,
@@ -474,6 +506,7 @@ export function registerIpcHandlers(): void {
         customer.default_rate || 90.0,
         customer.previous_balance ?? current.previous_balance ?? 0,
         customer.shift ? normShift(customer.shift) : current.shift || 'Morning',
+        consent,
         customer.id
       );
 
@@ -1123,14 +1156,14 @@ export function registerIpcHandlers(): void {
              COUNT(DISTINCT supplier_id) as suppliers_count,
              COALESCE(SUM(total), 0) as total
       FROM supplier_purchases
-      WHERE date = ?
+      WHERE TRIM(date) = TRIM(?) AND supplier_id IN (SELECT id FROM suppliers)
     `).get(date) as any;
     const receivedToday = Number(sup?.liters) || 0;
     const supplierCount = Number(sup?.suppliers_count) || 0;
     const receivedTotalCost = Number(sup?.total) || (receivedToday * activeRate);
 
     // 3. Sales on this date: Walk-in POS + Monthly Khata
-    const pos = db.prepare("SELECT COALESCE(SUM(quantity), 0) as qty, COALESCE(SUM(total), 0) as total FROM sales WHERE customer_id IS NULL AND date = ?").get(date) as any;
+    const pos = db.prepare("SELECT COALESCE(SUM(quantity), 0) as qty, COALESCE(SUM(total_amount), 0) as total FROM sales WHERE customer_id IS NULL AND date = ?").get(date) as any;
     const soldPos = Number(pos?.qty) || 0;
     const soldPosRevenue = Number(pos?.total) || Math.round(soldPos * activeRate);
 
@@ -1308,7 +1341,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('records:monthly', async () => {
     const db = getDatabase();
     const customers = db
-      .prepare('SELECT id, name, phone, default_rate, previous_balance FROM customers ORDER BY sort_order ASC, id ASC')
+      .prepare('SELECT id, name, phone, address, default_rate, previous_balance, whatsapp_consent FROM customers ORDER BY sort_order ASC, id ASC')
       .all() as any[];
     const qty = db
       .prepare(`SELECT customer_id, substr(entry_date,1,7) AS m, SUM(quantity) AS liters
@@ -1345,7 +1378,8 @@ export function registerIpcHandlers(): void {
         return { month: m, liters, rate, bill: Math.round(bill), paid: Math.round(paid), balance: Math.round(balance) };
       });
       return {
-        id: c.id, name: c.name, phone: c.phone,
+        id: c.id, name: c.name, phone: c.phone, address: c.address,
+        whatsapp_consent: c.whatsapp_consent !== 0,
         openingBalance: Number(c.previous_balance) || 0,
         totalLiters, totalBilled: Math.round(totalBilled), totalPaid: Math.round(totalPaid),
         balance: Math.round(balance), monthCount: rows.length, rows,
@@ -1357,6 +1391,7 @@ export function registerIpcHandlers(): void {
     customerId: number;
     date: string; // YYYY-MM-DD
     quantity: number;
+    cleared?: boolean;
   }) => {
     const db = getDatabase();
     const qty = Number(payload.quantity);
@@ -1365,7 +1400,7 @@ export function registerIpcHandlers(): void {
       return { success: false, error: 'customerId and a valid YYYY-MM-DD date are required' };
     }
 
-    if (!Number.isFinite(qty) || qty <= 0) {
+    if (payload.cleared || !Number.isFinite(qty) || qty < 0) {
       db.prepare('DELETE FROM milk_entries WHERE customer_id = ? AND entry_date = ?').run(
         payload.customerId,
         payload.date
@@ -1731,19 +1766,81 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  // 17. WhatsApp status / disconnect
+  // 17. Meta WhatsApp Cloud API & Billing
   ipcMain.handle('whatsapp:getStatus', async () => {
-    return {
-      isConnected: false,
-      isConnecting: false,
-      phoneNumber: null,
-      userName: null,
-      qrCode: null,
-    };
+    return getWhatsAppCloudStatus();
+  });
+
+  ipcMain.handle('whatsapp:getCloudStatus', async () => {
+    return getWhatsAppCloudStatus();
+  });
+
+  ipcMain.handle('whatsapp:sendSingleBill', async (_e, payload: { item: any; settings: any; force?: boolean }) => {
+    return sendSingleCustomerBill(payload.item, payload.settings, payload.force);
+  });
+
+  ipcMain.handle('whatsapp:getLogs', async (_e, month: string) => {
+    return getLocalWhatsAppBillLogs(month);
+  });
+
+  ipcMain.handle('whatsapp:setConsent', async (_e, payload: { customerId: number; consent: boolean }) => {
+    const db = getDatabase();
+    db.prepare('UPDATE customers SET whatsapp_consent = ?, whatsapp_opt_out_at = ? WHERE id = ?').run(
+      payload.consent ? 1 : 0,
+      payload.consent ? null : new Date().toISOString(),
+      payload.customerId
+    );
+    return { success: true };
   });
 
   ipcMain.handle('whatsapp:disconnect', async () => {
     return { success: true };
+  });
+
+  // 17b. Cloud Sync & Backup Handlers
+  ipcMain.handle('cloud:getConfig', async () => {
+    return getCloudConfig();
+  });
+
+  ipcMain.handle('cloud:saveConfig', async (_e, config: { apiUrl?: string; apiKey?: string; deviceId?: string }) => {
+    saveCloudConfig(config);
+    return { success: true };
+  });
+
+  ipcMain.handle('cloud:getConnectionStatus', async () => {
+    return getConnectionStatus();
+  });
+
+  ipcMain.handle('cloud:sync', async () => {
+    return performCloudSync();
+  });
+
+  ipcMain.handle('cloud:getSyncMeta', async () => {
+    return getLocalSyncMeta();
+  });
+
+  ipcMain.handle('cloud:createBackup', async (event, notes?: string) => {
+    return createAndUploadCloudBackup((stage, percent) => {
+      event.sender.send('backup:progress', { stage, percent });
+    }, notes);
+  });
+
+  ipcMain.handle('cloud:cancelBackup', async () => {
+    return { cancelled: cancelActiveBackup() };
+  });
+
+  ipcMain.handle('cloud:getHistory', async () => {
+    return getCloudBackupHistory();
+  });
+
+  ipcMain.handle('cloud:restoreBackup', async (event, backupId: string) => {
+    return restoreCloudBackup(backupId, (stage, percent) => {
+      event.sender.send('restore:progress', { stage, percent });
+    });
+  });
+
+  ipcMain.handle('bill:renderImage', async (_e, data: any) => {
+    return generateBillImage(data);
   });
 
   // 18. Vehicles

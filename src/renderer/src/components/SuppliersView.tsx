@@ -48,6 +48,13 @@ export const SuppliersView: React.FC = () => {
     load();
   }, [load]);
 
+  // Auto-refresh when any data changes (supplier add/delete/purchase/payment)
+  useEffect(() => {
+    const handleDataChange = () => load();
+    window.addEventListener('dairy-data-changed', handleDataChange);
+    return () => window.removeEventListener('dairy-data-changed', handleDataChange);
+  }, [load]);
+
   const loadLedger = useCallback(async (id: number) => {
     if (window.electronAPI) setLedger(await window.electronAPI.getSupplierLedger(id));
   }, []);
@@ -55,6 +62,14 @@ export const SuppliersView: React.FC = () => {
   useEffect(() => {
     if (detail) loadLedger(detail.id);
   }, [detail?.id, loadLedger]);
+
+  // Also refresh ledger when data changes
+  useEffect(() => {
+    if (!detail) return;
+    const handleDataChange = () => loadLedger(detail.id);
+    window.addEventListener('dairy-data-changed', handleDataChange);
+    return () => window.removeEventListener('dairy-data-changed', handleDataChange);
+  }, [detail, loadLedger]);
 
   const refresh = async () => {
     await load();
@@ -77,9 +92,6 @@ export const SuppliersView: React.FC = () => {
     if (tab === 'sheet' && sheetTotals) {
       return sheetTotals;
     }
-    if (sheetTotals && t.liters === 0 && sheetTotals.liters > 0) {
-      return sheetTotals;
-    }
     return t;
   }, [list, tab, sheetTotals]);
 
@@ -93,15 +105,19 @@ export const SuppliersView: React.FC = () => {
     if (!res.success) return setError(res.error || 'Failed');
     setForm(null);
     setError('');
-    load();
+    await load();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const removeSupplier = async (s: SupplierItem) => {
     if (!confirm(ur ? `${s.name} اور اس کا سارا ریکارڈ حذف کریں؟` : `Delete ${s.name} and all its records?`)) return;
     await window.electronAPI?.deleteSupplier(s.id);
     setSelectedSupplierIds((prev) => prev.filter((id) => id !== s.id));
+    setList((prev) => prev.filter((item) => item.id !== s.id));
+    setSheetTotals(null);
     if (detail?.id === s.id) setDetail(null);
-    load();
+    await load();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const bulkDeleteSuppliers = async () => {
@@ -112,11 +128,14 @@ export const SuppliersView: React.FC = () => {
     if (!confirm(msg)) return;
 
     await window.electronAPI.deleteSuppliers(selectedSupplierIds);
+    setList((prev) => prev.filter((item) => !selectedSupplierIds.includes(item.id)));
+    setSheetTotals(null);
     if (detail && selectedSupplierIds.includes(detail.id)) {
       setDetail(null);
     }
     setSelectedSupplierIds([]);
-    load();
+    await load();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const addPurchase = async () => {
@@ -136,7 +155,8 @@ export const SuppliersView: React.FC = () => {
     if (!res.success) return setError(res.error || 'Failed');
     setPLiters('');
     setPPaid('');
-    refresh();
+    await refresh();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const addPayment = async () => {
@@ -151,7 +171,8 @@ export const SuppliersView: React.FC = () => {
     });
     if (!res.success) return setError(res.error || 'Failed');
     setYAmount('');
-    refresh();
+    await refresh();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const inputCls = 'w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500';
@@ -281,6 +302,7 @@ export const SuppliersView: React.FC = () => {
             onClick={async () => {
               setTab(id);
               await load();
+              window.dispatchEvent(new Event('dairy-data-changed'));
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer transition-colors ${
               tab === id
@@ -324,14 +346,14 @@ export const SuppliersView: React.FC = () => {
       {/* List view */}
       <div style={{ display: tab === 'list' ? 'block' : 'none' }}>
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="bg-[#081028] rounded-2xl border border-blue-500/25 p-4 flex flex-wrap items-center justify-between gap-3 shadow-[0_4px_20px_rgba(0,0,0,0.3)]">
             <div className="flex items-center gap-2">
-              <Truck className="w-5 h-5 text-brand-600" />
-              <h2 className="text-lg font-bold text-slate-800">{ur ? 'سپلائرز' : 'Suppliers'}</h2>
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-0.5 ml-2">
-                <button onClick={() => shiftMonth(-1)} className="p-1 rounded-lg hover:bg-white cursor-pointer"><ChevronLeft className="w-4 h-4" /></button>
-                <span className="text-[11px] font-bold text-slate-600 px-1">{month}</span>
-                <button onClick={() => shiftMonth(1)} className="p-1 rounded-lg hover:bg-white cursor-pointer"><ChevronRight className="w-4 h-4" /></button>
+              <Truck className="w-5 h-5 text-cyan-400" />
+              <h2 className="text-lg font-bold text-white">{ur ? 'سپلائرز' : 'Suppliers'}</h2>
+              <div className="flex items-center gap-1 bg-[#0b1437] border border-blue-500/30 rounded-xl p-0.5 ml-2">
+                <button onClick={() => shiftMonth(-1)} className="p-1 rounded-lg hover:bg-blue-600/30 text-cyan-400 hover:text-white cursor-pointer transition-colors"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-[11px] font-bold text-cyan-300 px-1">{month}</span>
+                <button onClick={() => shiftMonth(1)} className="p-1 rounded-lg hover:bg-blue-600/30 text-cyan-400 hover:text-white cursor-pointer transition-colors"><ChevronRight className="w-4 h-4" /></button>
               </div>
             </div>
 

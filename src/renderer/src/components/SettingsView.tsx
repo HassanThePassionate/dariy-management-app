@@ -25,6 +25,7 @@ import {
 import { useLanguage } from '../i18n/LanguageContext';
 import { DbInfo } from '../types/electron';
 import { ModernBillCard } from './ModernBillCard';
+import { CloudBackupSettings } from './CloudBackupSettings';
 
 interface SettingsViewProps {
   dbInfo: DbInfo | null;
@@ -649,6 +650,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
           </div>
         </div>
       </div>
+
+      {/* 4b. Cloud Synchronization, Neon PostgreSQL & S3 Online Backup */}
+      <CloudBackupSettings />
 
       {/* 5. Database Backup & Restore (.db and USB Flash) */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-2xs space-y-5">

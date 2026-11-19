@@ -328,6 +328,52 @@ function migrateCustomerColumns(): void {
     console.log('[SQLite] Migration: added customers.sort_order');
   }
 
+  if (!existing.has('whatsapp_consent')) {
+    db.exec('ALTER TABLE customers ADD COLUMN whatsapp_consent INTEGER DEFAULT 1');
+    console.log('[SQLite] Migration: added customers.whatsapp_consent');
+  }
+
+  if (!existing.has('whatsapp_opt_out_at')) {
+    db.exec('ALTER TABLE customers ADD COLUMN whatsapp_opt_out_at TEXT');
+    console.log('[SQLite] Migration: added customers.whatsapp_opt_out_at');
+  }
+
+  // Cloud sync & WhatsApp billing tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_sync_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_bill_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER,
+      customer_name TEXT,
+      phone TEXT NOT NULL,
+      bill_month TEXT NOT NULL,
+      bill_amount REAL NOT NULL,
+      liters REAL NOT NULL,
+      rate REAL NOT NULL,
+      balance_due REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      message_id TEXT,
+      media_id TEXT,
+      error_message TEXT,
+      idempotency_key TEXT UNIQUE,
+      retry_count INTEGER DEFAULT 0,
+      sent_at DATETIME,
+      delivered_at DATETIME,
+      read_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_month ON whatsapp_bill_logs(bill_month);
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_cust ON whatsapp_bill_logs(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_status ON whatsapp_bill_logs(status);
+  `);
+
   // Backfill missing / duplicate sort_order values by current name ordering
   const needsBackfill = db
     .prepare('SELECT COUNT(*) as c FROM customers WHERE sort_order IS NULL OR sort_order = 0')
@@ -344,6 +390,17 @@ function migrateCustomerColumns(): void {
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_customers_sort_order ON customers(sort_order)');
+
+  // Clean up any orphaned supplier purchases or payments where supplier was deleted
+  try {
+    db.exec(`
+      DELETE FROM supplier_purchases WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+      DELETE FROM supplier_payments WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+      DELETE FROM supplier_opening_override WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+    `);
+  } catch (err) {
+    console.error('[SQLite] Cleanup orphaned supplier records failed:', err);
+  }
 }
 
 function seedInitialMockupData(): void {

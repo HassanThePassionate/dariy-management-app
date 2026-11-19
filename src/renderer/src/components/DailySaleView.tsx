@@ -294,26 +294,26 @@ export const DailySaleView: React.FC = () => {
         </div>
 
         {/* Date Selector */}
-        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-1.5 self-start md:self-auto">
+        <div className="flex items-center gap-2 bg-[#0b1437] border border-blue-500/30 rounded-2xl p-1.5 self-start md:self-auto shadow-[0_0_12px_rgba(0,102,255,0.15)]">
           <button
             type="button"
             onClick={() => shiftDate(-1)}
             title="Previous Day"
-            className="p-1.5 rounded-xl hover:bg-white text-slate-600 cursor-pointer transition-colors"
+            className="p-1.5 rounded-xl hover:bg-blue-600/30 text-cyan-400 hover:text-white cursor-pointer transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
 
           <div className="flex items-center gap-1.5 px-2">
-            <Calendar className="w-4 h-4 text-brand-600 shrink-0" />
+            <Calendar className="w-4 h-4 text-cyan-400 shrink-0" />
             <input
               type="date"
               value={date}
               onChange={(e) => e.target.value && setDate(e.target.value)}
-              className="bg-transparent text-xs font-extrabold text-slate-800 focus:outline-none cursor-pointer"
+              className="bg-transparent text-xs font-black text-white focus:outline-none cursor-pointer [color-scheme:dark]"
             />
-            <span className="text-slate-300">|</span>
-            <span className="text-xs font-bold text-brand-700 whitespace-nowrap">
+            <span className="text-blue-500/40">|</span>
+            <span className="text-xs font-bold text-cyan-300 whitespace-nowrap">
               {formatDateDisplay(date, ur)}
             </span>
           </div>
@@ -322,7 +322,7 @@ export const DailySaleView: React.FC = () => {
             type="button"
             onClick={() => shiftDate(1)}
             title="Next Day"
-            className="p-1.5 rounded-xl hover:bg-white text-slate-600 cursor-pointer transition-colors"
+            className="p-1.5 rounded-xl hover:bg-blue-600/30 text-cyan-400 hover:text-white cursor-pointer transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>

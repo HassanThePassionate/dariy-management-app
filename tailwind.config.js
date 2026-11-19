@@ -8,16 +8,16 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#1d70e2', // Main brand blue matching screenshot
-          700: '#1557b0',
-          800: '#1e40af',
-          900: '#1e3a8a',
+          50: '#e0f2fe',
+          100: '#bae6fd',
+          200: '#7dd3fc',
+          300: '#38bdf8',
+          400: '#0ea5e9',
+          500: '#0080ff',
+          600: '#0066ff', // Vibrant electric blue matching screenshot
+          700: '#0052cc',
+          800: '#003d99',
+          900: '#002966',
         },
       },
       fontFamily: {
@@ -27,4 +27,4 @@ module.exports = {
     },
   },
   plugins: [],
-}
+};

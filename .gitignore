@@ -1,7 +1,11 @@
 .env
+.env*.local
 data/
 node_modules/
 .next/
 out/
 npm-debug.log*
-
+dist/
+dist-electron/
+release/
+*.log

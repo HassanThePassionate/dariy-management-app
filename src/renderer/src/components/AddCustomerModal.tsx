@@ -29,6 +29,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
   const [position, setPosition] = useState('1');
   const [existing, setExisting] = useState<CustomerItem[]>([]);
   const [positionTouched, setPositionTouched] = useState(false);
+  const [whatsappConsent, setWhatsappConsent] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -61,6 +62,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
       setPreviousBalance(String(customer.previous_balance ?? 0));
       setShift(customer.shift || 'Morning');
       setPosition(String(customer.sort_order || 1));
+      setWhatsappConsent(customer.whatsapp_consent !== false);
     } else {
       setName('');
       setPhone('');
@@ -69,6 +71,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
       setPreviousBalance('0');
       setShift('Morning');
       setPosition('');
+      setWhatsappConsent(true);
     }
     setPositionTouched(false);
     setError('');
@@ -109,6 +112,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
           previous_balance: parseFloat(previousBalance) || 0,
           shift,
           position: parseInt(position, 10) || undefined,
+          whatsapp_consent: whatsappConsent,
         };
 
         if (customer) {
@@ -200,6 +204,19 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                 className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-slate-800"
               />
             </div>
+            <label className="mt-2 flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={whatsappConsent}
+                onChange={(e) => setWhatsappConsent(e.target.checked)}
+                className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-[11px] font-bold text-slate-600">
+                {language === 'ur'
+                  ? 'واٹس ایپ بل نوٹیفکیشن موصول کرنے کی رضامندی (WhatsApp Consent)'
+                  : 'Receive automated monthly bills via WhatsApp'}
+              </span>
+            </label>
           </div>
 
           {/* Address (kept optional) */}

@@ -1,4 +1,5 @@
 import React from 'react';
+import logoUrl from '../assets/logo.png';
 
 export interface CowLogoProps {
   className?: string;
@@ -37,11 +38,9 @@ export const CowLogo: React.FC<CowLogoProps> = ({
     );
   }
 
-  const src = '/cow-logo.png';
-
   return (
     <img
-      src={src}
+      src={logoUrl}
       alt={alt}
       style={{
         width: size ? `${size}px` : undefined,

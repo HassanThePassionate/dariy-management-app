@@ -279,10 +279,10 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
         </div>
 
         {/* Shift Filter Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
-          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl">
-            <span className="text-[11px] font-extrabold text-slate-500 px-2 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-blue-500/20 pt-3">
+          <div className="flex items-center gap-1.5 bg-[#091438] border border-blue-500/30 p-1 rounded-xl shadow-[0_0_12px_rgba(0,102,255,0.15)]">
+            <span className="text-[11px] font-extrabold text-slate-300 px-2 flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span>{language === 'ur' ? 'شفٹ فلٹر:' : 'Shift:'}</span>
             </span>
             {([
@@ -320,8 +320,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                   onClick={() => setShiftFilter(s.id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
                     active
-                      ? 'bg-brand-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                      ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-[0_0_10px_rgba(0,102,255,0.4)]'
+                      : 'text-slate-300 hover:text-white hover:bg-blue-600/20'
                   }`}
                 >
                   {Icon && (
@@ -330,15 +330,15 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                         active
                           ? 'text-white'
                           : s.id === 'Morning'
-                          ? 'text-amber-500'
-                          : 'text-indigo-500'
+                          ? 'text-amber-400'
+                          : 'text-cyan-400'
                       }`}
                     />
                   )}
                   <span>{s.label}</span>
                   <span
                     className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                      active ? 'bg-white/20 text-white' : 'bg-slate-200/80 text-slate-600'
+                      active ? 'bg-white/20 text-white' : 'bg-[#0f1d47] text-cyan-300 border border-blue-500/30'
                     }`}
                   >
                     {s.count}
@@ -513,10 +513,24 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                        <Phone className="w-3 h-3 text-emerald-500" />
-                        {c.phone || '-'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1.5 text-xs text-slate-300 font-mono">
+                          <Phone className="w-3 h-3 text-emerald-400" />
+                          {c.phone || '-'}
+                        </span>
+                        {c.phone && (
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                              c.whatsapp_consent !== false
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                            }`}
+                            title={c.whatsapp_consent !== false ? 'WhatsApp Consent: Active' : 'WhatsApp Opted Out'}
+                          >
+                            {c.whatsapp_consent !== false ? 'WA' : 'Opt-Out'}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs font-bold text-brand-700">
                       {formatMoney(c.default_rate)}

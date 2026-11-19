@@ -23,8 +23,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/main/main.ts
-var import_electron3 = require("electron");
-var import_path3 = __toESM(require("path"));
+var import_electron5 = require("electron");
+var import_path5 = __toESM(require("path"));
+var import_fs5 = __toESM(require("fs"));
 
 // src/main/db/database.ts
 var import_better_sqlite3 = __toESM(require("better-sqlite3"));
@@ -72,6 +73,10 @@ function getDatabase() {
 function closeDatabase() {
   if (dbInstance) {
     try {
+      try {
+        dbInstance.pragma("wal_checkpoint(PASSIVE)");
+      } catch {
+      }
       dbInstance.close();
       console.log("[SQLite] Database closed.");
     } catch (err) {
@@ -79,6 +84,69 @@ function closeDatabase() {
     } finally {
       dbInstance = null;
     }
+  }
+}
+async function createDatabaseSnapshot(destPath) {
+  const db = getDatabase();
+  const dir = import_path.default.dirname(destPath);
+  if (!import_fs.default.existsSync(dir)) {
+    import_fs.default.mkdirSync(dir, { recursive: true });
+  }
+  try {
+    db.pragma("wal_checkpoint(PASSIVE)");
+  } catch (cpErr) {
+    console.warn("[SQLite Snapshot] WAL passive checkpoint warning:", cpErr);
+  }
+  if (typeof db.backup === "function") {
+    await db.backup(destPath);
+  } else {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+    import_fs.default.copyFileSync(getDatabasePath(), destPath);
+  }
+  return destPath;
+}
+function restoreDatabaseFromFile(sourcePath) {
+  const dbPath = getDatabasePath();
+  if (!import_fs.default.existsSync(sourcePath)) {
+    return { success: false, error: `Source backup file does not exist at: ${sourcePath}` };
+  }
+  const safetyBackupPath = `${dbPath}.pre-restore-${Date.now()}.bak`;
+  try {
+    closeDatabase();
+    if (import_fs.default.existsSync(dbPath)) {
+      import_fs.default.copyFileSync(dbPath, safetyBackupPath);
+    }
+    const walFile = `${dbPath}-wal`;
+    const shmFile = `${dbPath}-shm`;
+    if (import_fs.default.existsSync(walFile)) {
+      try {
+        import_fs.default.copyFileSync(walFile, `${safetyBackupPath}-wal`);
+        import_fs.default.unlinkSync(walFile);
+      } catch {
+      }
+    }
+    if (import_fs.default.existsSync(shmFile)) {
+      try {
+        import_fs.default.copyFileSync(shmFile, `${safetyBackupPath}-shm`);
+        import_fs.default.unlinkSync(shmFile);
+      } catch {
+      }
+    }
+    import_fs.default.copyFileSync(sourcePath, dbPath);
+    const newDb = initDatabase();
+    const check = newDb.pragma("quick_check");
+    console.log("[SQLite Restore] Integrity verification result:", check);
+    return { success: true, safetyBackupPath };
+  } catch (err) {
+    console.error("[SQLite Restore] Failed to restore database:", err);
+    try {
+      if (import_fs.default.existsSync(safetyBackupPath)) {
+        import_fs.default.copyFileSync(safetyBackupPath, dbPath);
+        initDatabase();
+      }
+    } catch {
+    }
+    return { success: false, error: err.message || "Database restore failed" };
   }
 }
 
@@ -384,6 +452,48 @@ function migrateCustomerColumns() {
     db.exec("ALTER TABLE customers ADD COLUMN sort_order INTEGER DEFAULT 0");
     console.log("[SQLite] Migration: added customers.sort_order");
   }
+  if (!existing.has("whatsapp_consent")) {
+    db.exec("ALTER TABLE customers ADD COLUMN whatsapp_consent INTEGER DEFAULT 1");
+    console.log("[SQLite] Migration: added customers.whatsapp_consent");
+  }
+  if (!existing.has("whatsapp_opt_out_at")) {
+    db.exec("ALTER TABLE customers ADD COLUMN whatsapp_opt_out_at TEXT");
+    console.log("[SQLite] Migration: added customers.whatsapp_opt_out_at");
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS cloud_sync_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS whatsapp_bill_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER,
+      customer_name TEXT,
+      phone TEXT NOT NULL,
+      bill_month TEXT NOT NULL,
+      bill_amount REAL NOT NULL,
+      liters REAL NOT NULL,
+      rate REAL NOT NULL,
+      balance_due REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      message_id TEXT,
+      media_id TEXT,
+      error_message TEXT,
+      idempotency_key TEXT UNIQUE,
+      retry_count INTEGER DEFAULT 0,
+      sent_at DATETIME,
+      delivered_at DATETIME,
+      read_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_month ON whatsapp_bill_logs(bill_month);
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_cust ON whatsapp_bill_logs(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_status ON whatsapp_bill_logs(status);
+  `);
   const needsBackfill = db.prepare("SELECT COUNT(*) as c FROM customers WHERE sort_order IS NULL OR sort_order = 0").get();
   if (needsBackfill.c > 0) {
     const rows = db.prepare("SELECT id FROM customers ORDER BY name ASC, id ASC").all();
@@ -395,25 +505,815 @@ function migrateCustomerColumns() {
     console.log("[SQLite] Migration: backfilled sort_order for", rows.length, "customers");
   }
   db.exec("CREATE INDEX IF NOT EXISTS idx_customers_sort_order ON customers(sort_order)");
+  try {
+    db.exec(`
+      DELETE FROM supplier_purchases WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+      DELETE FROM supplier_payments WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+      DELETE FROM supplier_opening_override WHERE supplier_id NOT IN (SELECT id FROM suppliers);
+    `);
+  } catch (err) {
+    console.error("[SQLite] Cleanup orphaned supplier records failed:", err);
+  }
 }
 
 // src/main/db/handlers.ts
-var import_electron2 = require("electron");
+var import_electron4 = require("electron");
+var import_fs4 = __toESM(require("fs"));
+var import_path4 = __toESM(require("path"));
+var import_child_process = require("child_process");
+
+// src/main/cloud/cloudConfig.ts
+function getCloudConfig() {
+  const db = getDatabase();
+  let url = process.env.CLOUD_API_URL || "";
+  let key = process.env.CLOUD_API_KEY || "";
+  let deviceId = process.env.APP_DEVICE_ID || "dairy-desktop-pos-1";
+  try {
+    const urlRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_api_url'").get();
+    const keyRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_api_key'").get();
+    const devRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_device_id'").get();
+    if (urlRow?.value) url = urlRow.value.trim();
+    if (keyRow?.value) key = keyRow.value.trim();
+    if (devRow?.value) deviceId = devRow.value.trim();
+  } catch {
+  }
+  if (!url) {
+    url = "http://localhost:3001";
+  }
+  url = url.replace(/\/+$/, "");
+  return {
+    apiUrl: url,
+    apiKey: key,
+    deviceId
+  };
+}
+function saveCloudConfig(config) {
+  const db = getDatabase();
+  const upsert = db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+  if (config.apiUrl !== void 0) upsert.run("cloud_api_url", config.apiUrl.trim().replace(/\/+$/, ""));
+  if (config.apiKey !== void 0) upsert.run("cloud_api_key", config.apiKey.trim());
+  if (config.deviceId !== void 0) upsert.run("cloud_device_id", config.deviceId.trim());
+}
+
+// src/main/cloud/connectivity.ts
+var import_dns = __toESM(require("dns"));
+async function isInternetAvailable() {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      resolve(false);
+    }, 2500);
+    import_dns.default.lookup("google.com", (err) => {
+      clearTimeout(timeout);
+      if (!err) {
+        resolve(true);
+      } else {
+        import_dns.default.lookup("cloudflare.com", (err2) => {
+          resolve(!err2);
+        });
+      }
+    });
+  });
+}
+async function checkBackendReachable() {
+  const config = getCloudConfig();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4e3);
+    const res = await fetch(`${config.apiUrl}/api/health`, {
+      method: "GET",
+      headers: {
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      return { reachable: true, data };
+    } else {
+      return {
+        reachable: false,
+        error: `Backend responded with HTTP status ${res.status}`
+      };
+    }
+  } catch (err) {
+    return {
+      reachable: false,
+      error: err.name === "AbortError" ? "Backend connection timed out" : err.message || "Cannot reach cloud backend"
+    };
+  }
+}
+async function getConnectionStatus() {
+  const config = getCloudConfig();
+  const isLocalBackend = config.apiUrl.includes("localhost") || config.apiUrl.includes("127.0.0.1");
+  const [online, backendRes] = await Promise.all([
+    isLocalBackend ? Promise.resolve(true) : isInternetAvailable(),
+    checkBackendReachable()
+  ]);
+  return {
+    isOnline: online || backendRes.reachable,
+    isBackendReachable: backendRes.reachable,
+    apiUrl: config.apiUrl,
+    backendVersion: backendRes.data?.version,
+    backendComponents: backendRes.data?.components,
+    error: backendRes.error
+  };
+}
+
+// src/main/cloud/cloudSync.ts
+function getLocalSyncMeta() {
+  const db = getDatabase();
+  try {
+    const row = db.prepare("SELECT value FROM cloud_sync_meta WHERE key = 'last_synced_at'").get();
+    const errRow = db.prepare("SELECT value FROM cloud_sync_meta WHERE key = 'last_sync_error'").get();
+    return {
+      lastSyncAt: row?.value || null,
+      lastError: errRow?.value || void 0
+    };
+  } catch {
+    return { lastSyncAt: null };
+  }
+}
+function setLocalSyncMeta(key, value) {
+  const db = getDatabase();
+  try {
+    db.prepare(`
+      INSERT INTO cloud_sync_meta (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(key, value);
+  } catch (err) {
+    console.warn("[Sync Meta] Failed to save sync metadata:", err);
+  }
+}
+var isSyncInProgress = false;
+async function performCloudSync() {
+  if (isSyncInProgress) {
+    return { success: false, error: "A synchronization operation is already in progress." };
+  }
+  isSyncInProgress = true;
+  try {
+    const conn = await getConnectionStatus();
+    if (!conn.isBackendReachable) {
+      setLocalSyncMeta("last_sync_error", conn.error || "Cloud backend unreachable");
+      return {
+        success: false,
+        error: conn.error || "Cannot sync: cloud backend is unreachable or offline"
+      };
+    }
+    const config = getCloudConfig();
+    const db = getDatabase();
+    const meta = getLocalSyncMeta();
+    const customers = db.prepare("SELECT * FROM customers").all();
+    const sales = db.prepare("SELECT * FROM sales ORDER BY id DESC LIMIT 500").all();
+    const milkEntries = db.prepare("SELECT * FROM milk_entries").all();
+    const customerMonthRates = db.prepare("SELECT * FROM customer_month_rates").all();
+    const receivedPayments = db.prepare("SELECT * FROM received_payments").all();
+    const khataOpeningOverrides = db.prepare("SELECT * FROM khata_opening_override").all();
+    const suppliers = db.prepare("SELECT * FROM suppliers").all();
+    const supplierPurchases = db.prepare("SELECT * FROM supplier_purchases").all();
+    const supplierPayments = db.prepare("SELECT * FROM supplier_payments").all();
+    const expenses = db.prepare("SELECT * FROM expenses ORDER BY id DESC LIMIT 500").all();
+    const gheeTransactions = db.prepare("SELECT * FROM ghee_transactions").all();
+    const shopperTransactions = db.prepare("SELECT * FROM shopper_transactions").all();
+    const dailyStockRecords = db.prepare("SELECT * FROM daily_stock_records").all();
+    const billSettings = db.prepare("SELECT * FROM bill_settings WHERE id = 1").get();
+    const payload = {
+      deviceId: config.deviceId,
+      lastSyncTimestamp: meta.lastSyncAt,
+      customers,
+      sales,
+      milkEntries,
+      customerMonthRates,
+      receivedPayments,
+      khataOpeningOverrides,
+      suppliers,
+      supplierPurchases,
+      supplierPayments,
+      expenses,
+      gheeTransactions,
+      shopperTransactions,
+      dailyStockRecords,
+      billSettings
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2e4);
+    const response = await fetch(`${config.apiUrl}/api/sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      const err = data.error || `Sync failed with status ${response.status}`;
+      setLocalSyncMeta("last_sync_error", err);
+      return { success: false, error: err };
+    }
+    if (data.serverTimestamp) {
+      setLocalSyncMeta("last_synced_at", data.serverTimestamp);
+      setLocalSyncMeta("last_sync_error", "");
+    }
+    return {
+      success: true,
+      counts: data.counts,
+      serverTimestamp: data.serverTimestamp
+    };
+  } catch (err) {
+    const errorMsg = err.name === "AbortError" ? "Sync timed out" : err.message || "Sync failed";
+    setLocalSyncMeta("last_sync_error", errorMsg);
+    return { success: false, error: errorMsg };
+  } finally {
+    isSyncInProgress = false;
+  }
+}
+
+// src/main/cloud/cloudBackup.ts
 var import_fs2 = __toESM(require("fs"));
 var import_path2 = __toESM(require("path"));
-var import_child_process = require("child_process");
+var import_crypto = __toESM(require("crypto"));
+var import_electron2 = require("electron");
+var activeAbortController = null;
+var isBackupInProgress = false;
+function cancelActiveBackup() {
+  if (activeAbortController) {
+    console.log("[Cloud Backup] Backup cancelled by user.");
+    activeAbortController.abort();
+    activeAbortController = null;
+    isBackupInProgress = false;
+    return true;
+  }
+  return false;
+}
+async function createAndUploadCloudBackup(onProgress, notes = "Application shutdown auto-backup") {
+  if (isBackupInProgress) {
+    return { success: false, error: "A backup upload is already in progress." };
+  }
+  isBackupInProgress = true;
+  activeAbortController = new AbortController();
+  const signal = activeAbortController.signal;
+  let tempSnapshotPath = null;
+  try {
+    onProgress?.("Checking cloud connection...", 10);
+    if (signal.aborted) throw new Error("Cancelled");
+    const conn = await getConnectionStatus();
+    if (!conn.isOnline || !conn.isBackendReachable) {
+      return {
+        success: false,
+        error: conn.error || "Cannot backup: No internet connection or cloud backend is offline."
+      };
+    }
+    onProgress?.("Synchronizing latest database changes...", 25);
+    if (signal.aborted) throw new Error("Cancelled");
+    try {
+      await performCloudSync();
+    } catch (syncErr) {
+      console.warn("[Cloud Backup] Pre-backup sync warning (continuing with snapshot):", syncErr);
+    }
+    onProgress?.("Creating consistent SQLite database snapshot...", 50);
+    if (signal.aborted) throw new Error("Cancelled");
+    const tempDir = import_path2.default.join(import_electron2.app.getPath("temp"), "dairy_backups");
+    if (!import_fs2.default.existsSync(tempDir)) import_fs2.default.mkdirSync(tempDir, { recursive: true });
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+    tempSnapshotPath = import_path2.default.join(tempDir, `dairy_snapshot_${timestamp}.db`);
+    await createDatabaseSnapshot(tempSnapshotPath);
+    if (!import_fs2.default.existsSync(tempSnapshotPath)) {
+      throw new Error("Failed to create local database snapshot file.");
+    }
+    const fileBuffer = import_fs2.default.readFileSync(tempSnapshotPath);
+    const sizeBytes = fileBuffer.length;
+    onProgress?.("Verifying snapshot integrity...", 65);
+    if (signal.aborted) throw new Error("Cancelled");
+    const checksum = import_crypto.default.createHash("sha256").update(fileBuffer).digest("hex");
+    onProgress?.("Uploading backup to cloud storage...", 80);
+    if (signal.aborted) throw new Error("Cancelled");
+    const config = getCloudConfig();
+    const formData = new FormData();
+    const blob = new Blob([fileBuffer], { type: "application/x-sqlite3" });
+    formData.append("file", blob, `dairy_${timestamp}.db`);
+    formData.append("checksum", checksum);
+    formData.append("deviceId", config.deviceId);
+    formData.append("notes", notes);
+    const uploadResponse = await fetch(`${config.apiUrl}/api/backup`, {
+      method: "POST",
+      headers: {
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      body: formData,
+      signal
+    });
+    if (!uploadResponse.ok) {
+      const errData = await uploadResponse.json().catch(() => ({}));
+      throw new Error(errData.error || `Upload failed with HTTP status ${uploadResponse.status}`);
+    }
+    const resJson = await uploadResponse.json();
+    if (!resJson.success) {
+      throw new Error(resJson.error || "Server rejected backup upload");
+    }
+    onProgress?.("Backup verified successfully!", 100);
+    return {
+      success: true,
+      backupId: resJson.backupId,
+      checksum,
+      sizeBytes
+    };
+  } catch (err) {
+    if (err.name === "AbortError" || err.message === "Cancelled") {
+      return { success: false, cancelled: true, error: "Backup cancelled by user" };
+    }
+    return {
+      success: false,
+      error: err.message || "Backup failed unexpectedly"
+    };
+  } finally {
+    isBackupInProgress = false;
+    activeAbortController = null;
+    if (tempSnapshotPath && import_fs2.default.existsSync(tempSnapshotPath)) {
+      try {
+        import_fs2.default.unlinkSync(tempSnapshotPath);
+      } catch {
+      }
+    }
+  }
+}
+async function getCloudBackupHistory() {
+  const config = getCloudConfig();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8e3);
+    const res = await fetch(`${config.apiUrl}/api/backup/history`, {
+      headers: {
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `Error ${res.status}` };
+    }
+    return {
+      success: true,
+      backups: data.backups || []
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.name === "AbortError" ? "History fetch timed out" : err.message || "Failed to fetch history"
+    };
+  }
+}
+async function restoreCloudBackup(backupId, onProgress) {
+  const config = getCloudConfig();
+  try {
+    onProgress?.("Requesting backup restore from cloud...", 20);
+    const res = await fetch(`${config.apiUrl}/api/backup/restore`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      body: JSON.stringify({ backupId })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || "Failed to initiate restore" };
+    }
+    onProgress?.("Downloading cloud backup file...", 50);
+    const fileRes = await fetch(data.downloadUrl);
+    if (!fileRes.ok) {
+      return { success: false, error: `Failed to download file from storage (${fileRes.status})` };
+    }
+    const arrayBuffer = await fileRes.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    onProgress?.("Verifying download integrity (SHA-256)...", 75);
+    const computedChecksum = import_crypto.default.createHash("sha256").update(buffer).digest("hex");
+    if (data.sha256Checksum && computedChecksum.toLowerCase() !== data.sha256Checksum.toLowerCase()) {
+      return {
+        success: false,
+        error: `Integrity check failed: Checksum mismatch! Downloaded file may be corrupted.`
+      };
+    }
+    const tempRestorePath = import_path2.default.join(import_electron2.app.getPath("temp"), `restore_${backupId}.db`);
+    import_fs2.default.writeFileSync(tempRestorePath, buffer);
+    onProgress?.("Safely restoring local SQLite database...", 90);
+    const restoreRes = restoreDatabaseFromFile(tempRestorePath);
+    try {
+      import_fs2.default.unlinkSync(tempRestorePath);
+    } catch {
+    }
+    if (!restoreRes.success) {
+      return { success: false, error: restoreRes.error };
+    }
+    onProgress?.("Restore completed successfully!", 100);
+    return {
+      success: true,
+      safetyBackupPath: restoreRes.safetyBackupPath
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message || "Error occurred while restoring cloud backup"
+    };
+  }
+}
+
+// src/main/cloud/billImageGenerator.ts
+var import_electron3 = require("electron");
+var import_fs3 = __toESM(require("fs"));
+var import_path3 = __toESM(require("path"));
+function buildBillHtml(data) {
+  const shopTitle = data.shopTitle || "\u0642\u0627\u0631\u06CC \u0638\u0641\u0631 \u0627\u0642\u0628\u0627\u0644 \u0645\u0644\u06A9 \u0634\u0627\u067E";
+  const ownerName = data.ownerName || "\u062D\u0627\u0641\u0638 \u0645\u0635\u0639\u0628 \u0638\u0641\u0631";
+  const shopPhone = data.shopPhone || "+92 321 0001168";
+  const bankName = data.bankName || "\u0645\u06CC\u0632\u0627\u0646 \u0628\u06CC\u0646\u06A9";
+  const accountTitle = data.accountTitle || "\u062D\u0627\u0641\u0638 \u0645\u0635\u0639\u0628 \u0638\u0641\u0631";
+  const accountNumber = data.accountNumber || "02090111954760";
+  const money = (n) => Math.round(n || 0).toLocaleString("en-US");
+  const qty = (n) => Number.isInteger(n) ? String(n) : Number(n).toFixed(2);
+  return `<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #020b24;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #FFFFFF;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 440px;
+      padding: 12px;
+    }
+    .card {
+      width: 416px;
+      background: radial-gradient(circle at 50% 15%, #081a4a 0%, #020b24 70%);
+      border: 2px solid #00d2ff;
+      border-radius: 24px;
+      box-shadow: 0 0 25px rgba(0, 210, 255, 0.35);
+      padding: 18px 16px 20px;
+      text-align: right;
+    }
+    .header { text-align: center; margin-bottom: 8px; }
+    .shop-title { font-size: 24px; font-weight: 900; color: #FFFFFF; margin-bottom: 4px; }
+    .owner-badge {
+      display: inline-block;
+      padding: 2px 14px;
+      background: rgba(11, 20, 55, 0.8);
+      border: 1px solid rgba(0, 210, 255, 0.8);
+      border-radius: 9999px;
+      font-size: 12px;
+      color: #a5f3fc;
+      font-weight: bold;
+    }
+    .box {
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #06143c;
+      border: 1px solid rgba(0, 210, 255, 0.8);
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0, 150, 255, 0.2);
+    }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .label { font-size: 11px; color: #cbd5e1; }
+    .value { font-size: 15px; font-weight: 900; color: #FFFFFF; }
+    .highlight { color: #00d2ff; }
+    .amber { color: #fbbf24; }
+    .payable-box {
+      margin-top: 10px;
+      padding: 12px 14px;
+      background: linear-gradient(90deg, rgba(30, 58, 138, 0.9), #072559, rgba(30, 58, 138, 0.9));
+      border: 2px solid #00d2ff;
+      border-radius: 16px;
+      box-shadow: 0 0 20px rgba(0, 210, 255, 0.5);
+    }
+    .payable-amount { font-size: 26px; font-weight: 900; color: #FFFFFF; }
+    .warning {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #061a47;
+      border: 1px solid rgba(0, 210, 255, 0.7);
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #FFFFFF;
+      text-align: center;
+    }
+    .bank-box {
+      margin-top: 8px;
+      padding: 8px 12px;
+      background: #06143c;
+      border: 1px solid rgba(0, 210, 255, 0.8);
+      border-radius: 12px;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="shop-title">${shopTitle}</div>
+      <div class="owner-badge">${ownerName}</div>
+    </div>
+
+    <!-- Phone -->
+    <div class="box flex-between" dir="ltr">
+      <span class="value highlight" style="font-family: monospace;">${shopPhone}</span>
+      <span class="label" style="font-weight: bold;">\u0645\u0648\u0628\u0627\u0626\u0644 \u0646\u0645\u0628\u0631:</span>
+    </div>
+
+    <!-- Bill No & Customer -->
+    <div class="box grid-2">
+      <div style="border-left: 1px solid rgba(0,210,255,0.3); padding-left: 8px;">
+        <div class="label">\u0628\u0644 \u0646\u0645\u0628\u0631: <strong class="value">${data.billNo || data.customerId}</strong></div>
+        <div class="label highlight">${data.monthLabel}</div>
+      </div>
+      <div>
+        <div class="label">\u0628\u0644 \u0628\u0646\u0627\u0645:</div>
+        <div class="value" style="font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${data.customerName}</div>
+      </div>
+    </div>
+
+    <!-- Rate & Liters -->
+    <div class="grid-2" style="margin-top: 8px;">
+      <div class="box flex-between">
+        <span class="label">\u0641\u06CC \u0644\u06CC\u0679\u0631 \u0631\u06CC\u0679:</span>
+        <span class="value">${data.rate} \u0631\u0648\u067E\u06D2</span>
+      </div>
+      <div class="box flex-between">
+        <span class="label">\u06A9\u0644 \u062F\u0648\u062F\u06BE:</span>
+        <span class="value highlight">${qty(data.liters)} \u0644\u06CC\u0679\u0631</span>
+      </div>
+    </div>
+
+    <!-- Arrears & Milk Amount -->
+    <div class="box grid-2">
+      <div style="border-left: 1px solid rgba(0,210,255,0.3); padding-left: 8px;">
+        <div class="label">\u0633\u0627\u0628\u0642\u06C1 \u0631\u0642\u0645:</div>
+        <span class="value amber">${money(data.carry)} \u0631\u0648\u067E\u06D2</span>
+      </div>
+      <div>
+        <div class="label">\u06A9\u0644 \u0631\u0642\u0645 \u062F\u0648\u062F\u06BE:</div>
+        <span class="value">${money(data.billAmount)} \u0631\u0648\u067E\u06D2</span>
+      </div>
+    </div>
+
+    <!-- Total Payable -->
+    <div class="payable-box flex-between">
+      <div style="font-size: 13px; font-weight: 900; color: #a5f3fc;">\u06A9\u0644 \u0628\u0644 \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC:</div>
+      <div class="payable-amount">${money(data.payable)} <span style="font-size: 16px; color: #00d2ff;">\u0631\u0648\u067E\u06D2</span></div>
+    </div>
+
+    <!-- Warning -->
+    <div class="warning">
+      \u0628\u0644 \u06C1\u0631 \u0645\u0627\u06C1 \u06A9\u06CC <span style="color: #00d2ff;">5 \u062A\u0627\u0631\u06CC\u062E</span> \u062A\u06A9 \u0627\u062F\u0627 \u06A9\u0631\u06CC\u06BA\u060C \u0628\u0635\u0648\u0631\u062A \u062F\u06CC\u06AF\u0631 \u062F\u0648\u062F\u06BE \u06A9\u06CC \u0633\u067E\u0644\u0627\u0626\u06CC \u0628\u0646\u062F \u06A9\u0631 \u062F\u06CC \u062C\u0627\u0626\u06D2 \u06AF\u06CC\u06D4
+    </div>
+
+    <!-- Bank Details -->
+    <div class="bank-box flex-between" dir="ltr">
+      <div style="font-weight: bold; color: #00d2ff;">${bankName}</div>
+      <div style="text-align: right;">
+        <div style="color: #00d2ff; font-family: monospace; font-weight: bold;">A/C: ${accountNumber}</div>
+        <div style="color: #cbd5e1; font-size: 10px;">Title: ${accountTitle}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+async function generateBillImage(data) {
+  let offscreenWin = null;
+  try {
+    const html = buildBillHtml(data);
+    offscreenWin = new import_electron3.BrowserWindow({
+      width: 440,
+      height: 720,
+      show: false,
+      frame: false,
+      transparent: true,
+      webPreferences: {
+        offscreen: true
+      }
+    });
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    await offscreenWin.loadURL(dataUrl);
+    await new Promise((r) => setTimeout(r, 200));
+    const image = await offscreenWin.webContents.capturePage({
+      x: 0,
+      y: 0,
+      width: 440,
+      height: 720
+    });
+    const pngBuffer = image.toPNG();
+    const billsDir = import_path3.default.join(import_electron3.app.getPath("userData"), "bills", data.month.replace(/[^a-zA-Z0-9_-]/g, "_"));
+    if (!import_fs3.default.existsSync(billsDir)) {
+      import_fs3.default.mkdirSync(billsDir, { recursive: true });
+    }
+    const filePath = import_path3.default.join(billsDir, `bill_customer_${data.customerId}_${data.month}.png`);
+    import_fs3.default.writeFileSync(filePath, pngBuffer);
+    return {
+      success: true,
+      filePath,
+      buffer: pngBuffer
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.message || "Failed to render offscreen bill image"
+    };
+  } finally {
+    if (offscreenWin && !offscreenWin.isDestroyed()) {
+      offscreenWin.destroy();
+      offscreenWin = null;
+    }
+  }
+}
+
+// src/main/cloud/whatsappClient.ts
+async function getWhatsAppCloudStatus() {
+  const config = getCloudConfig();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6e3);
+    const res = await fetch(`${config.apiUrl}/api/whatsapp/status`, {
+      headers: {
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      return await res.json();
+    } else {
+      return {
+        configured: false,
+        connected: false,
+        error: `Cloud backend responded with status ${res.status}`
+      };
+    }
+  } catch (err) {
+    return {
+      configured: false,
+      connected: false,
+      error: err.name === "AbortError" ? "WhatsApp status check timed out" : err.message || "Cannot reach cloud backend"
+    };
+  }
+}
+async function uploadBillImageToCloud(buffer, fileName = "bill.png") {
+  const config = getCloudConfig();
+  try {
+    const formData = new FormData();
+    const blob = new Blob([buffer], { type: "image/png" });
+    formData.append("file", blob, fileName);
+    const res = await fetch(`${config.apiUrl}/api/whatsapp/media`, {
+      method: "POST",
+      headers: {
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return { success: false, error: data.error || `Media upload failed (${res.status})` };
+    }
+    return { success: true, mediaId: data.mediaId };
+  } catch (err) {
+    return { success: false, error: err.message || "Error uploading media to backend" };
+  }
+}
+async function sendSingleCustomerBill(item, settings, force = false) {
+  const config = getCloudConfig();
+  const db = getDatabase();
+  if (item.whatsappConsent === false) {
+    return { success: false, error: "Customer has opted out of WhatsApp billing notifications." };
+  }
+  const renderRes = await generateBillImage({
+    customerId: item.customerId,
+    customerName: item.customerName,
+    phone: item.phone,
+    month: item.billMonth,
+    monthLabel: item.monthLabel,
+    rate: item.rate,
+    liters: item.liters,
+    billAmount: item.billAmount,
+    carry: item.carry,
+    received: item.received,
+    payable: item.payable,
+    shopTitle: settings?.shop_title,
+    ownerName: settings?.owner_name,
+    shopPhone: settings?.phone,
+    bankName: settings?.bank_name,
+    accountTitle: settings?.account_title,
+    accountNumber: settings?.account_number
+  });
+  let mediaId;
+  if (renderRes.success && renderRes.buffer) {
+    const uploadRes = await uploadBillImageToCloud(
+      renderRes.buffer,
+      `bill_${item.customerId}_${item.billMonth}.png`
+    );
+    if (uploadRes.success) {
+      mediaId = uploadRes.mediaId;
+    }
+  }
+  try {
+    const res = await fetch(`${config.apiUrl}/api/whatsapp/send-bill`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": config.apiKey,
+        "x-device-id": config.deviceId
+      },
+      body: JSON.stringify({
+        customerId: item.customerId,
+        customerName: item.customerName,
+        phone: item.phone,
+        billMonth: item.billMonth,
+        liters: item.liters,
+        rate: item.rate,
+        billAmount: item.billAmount,
+        balanceDue: item.payable,
+        mediaId,
+        force
+      })
+    });
+    const data = await res.json();
+    const idempotencyKey = `${item.customerId || item.phone}_${item.billMonth}`;
+    const status = data.success ? "sent" : "failed";
+    try {
+      db.prepare(`
+        INSERT INTO whatsapp_bill_logs (
+          customer_id, customer_name, phone, bill_month, bill_amount, liters, rate,
+          balance_due, status, message_id, media_id, error_message, idempotency_key, sent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(idempotency_key) DO UPDATE SET
+          status = excluded.status,
+          message_id = excluded.message_id,
+          media_id = excluded.media_id,
+          error_message = excluded.error_message,
+          retry_count = whatsapp_bill_logs.retry_count + 1,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(
+        item.customerId,
+        item.customerName,
+        item.phone,
+        item.billMonth,
+        item.billAmount,
+        item.liters,
+        item.rate,
+        item.payable,
+        status,
+        data.messageId || null,
+        mediaId || null,
+        data.error || null,
+        idempotencyKey
+      );
+    } catch (dbErr) {
+      console.warn("[WhatsApp Client] Local log save error:", dbErr);
+    }
+    return data;
+  } catch (err) {
+    return { success: false, error: err.message || "Failed to dispatch bill" };
+  }
+}
+function getLocalWhatsAppBillLogs(month) {
+  const db = getDatabase();
+  try {
+    return db.prepare("SELECT * FROM whatsapp_bill_logs WHERE bill_month = ? ORDER BY id DESC").all(month);
+  } catch {
+    return [];
+  }
+}
+
+// src/main/db/handlers.ts
 function registerIpcHandlers() {
-  import_electron2.ipcMain.handle("db:getInfo", async () => {
+  import_electron4.ipcMain.handle("db:getInfo", async () => {
     try {
       const db = getDatabase();
-      const path4 = getDatabasePath();
+      const path6 = getDatabasePath();
       const test = db.prepare("SELECT 1 as connected").get();
       return {
         success: true,
         isConnected: test?.connected === 1,
-        dbPath: path4,
-        userDataPath: import_electron2.app.getPath("userData"),
-        appVersion: import_electron2.app.getVersion() || "1.0.0"
+        dbPath: path6,
+        userDataPath: import_electron4.app.getPath("userData"),
+        appVersion: import_electron4.app.getVersion() || "1.0.0"
       };
     } catch (error) {
       return {
@@ -424,7 +1324,7 @@ function registerIpcHandlers() {
       };
     }
   });
-  import_electron2.ipcMain.handle("settings:getAll", async () => {
+  import_electron4.ipcMain.handle("settings:getAll", async () => {
     const db = getDatabase();
     const rows = db.prepare("SELECT key, value FROM settings").all();
     const result = {};
@@ -433,7 +1333,7 @@ function registerIpcHandlers() {
     }
     return result;
   });
-  import_electron2.ipcMain.handle("settings:set", async (_event, key, value) => {
+  import_electron4.ipcMain.handle("settings:set", async (_event, key, value) => {
     const db = getDatabase();
     db.prepare(`
       INSERT INTO settings (key, value) VALUES (?, ?)
@@ -441,7 +1341,7 @@ function registerIpcHandlers() {
     `).run(key, value);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("twilio:send", async (_e, payload) => {
+  import_electron4.ipcMain.handle("twilio:send", async (_e, payload) => {
     try {
       const db = getDatabase();
       const sidRow = db.prepare("SELECT value FROM settings WHERE key = 'twilio_account_sid'").get();
@@ -493,27 +1393,28 @@ function registerIpcHandlers() {
       return { success: false, error: err.message || "Twilio network request failed" };
     }
   });
-  import_electron2.ipcMain.handle("tasks:getAll", async () => {
+  import_electron4.ipcMain.handle("tasks:getAll", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM tasks ORDER BY id DESC").all();
   });
-  import_electron2.ipcMain.handle("tasks:add", async (_event, title, status = "pending") => {
+  import_electron4.ipcMain.handle("tasks:add", async (_event, title, status = "pending") => {
     const db = getDatabase();
     const result = db.prepare("INSERT INTO tasks (title, status) VALUES (?, ?)").run(title, status);
     return { id: result.lastInsertRowid, title, status, success: true };
   });
-  import_electron2.ipcMain.handle("tasks:delete", async (_event, id) => {
+  import_electron4.ipcMain.handle("tasks:delete", async (_event, id) => {
     const db = getDatabase();
     db.prepare("DELETE FROM tasks WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("dashboard:getStats", async () => {
+  import_electron4.ipcMain.handle("dashboard:getStats", async (_event, customMonthKey) => {
     const db = getDatabase();
     const now = /* @__PURE__ */ new Date();
     const pad = (n) => String(n).padStart(2, "0");
-    const monthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-    const todayKey = `${monthKey}-${pad(now.getDate())}`;
-    const nextMonthKey = now.getMonth() === 11 ? `${now.getFullYear() + 1}-01` : `${now.getFullYear()}-${pad(now.getMonth() + 2)}`;
+    const monthKey = customMonthKey && /^\d{4}-\d{2}$/.test(customMonthKey) ? customMonthKey : `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const todayKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const [mY, mM] = monthKey.split("-").map(Number);
+    const nextMonthKey = mM === 12 ? `${mY + 1}-01` : `${mY}-${pad(mM + 1)}`;
     const customersCount = db.prepare("SELECT COUNT(*) as c FROM customers").get()?.c || 0;
     const rateRows = db.prepare(`
       SELECT c.id, c.name, COALESCE(mr.rate, c.default_rate) AS rate
@@ -579,8 +1480,9 @@ function registerIpcHandlers() {
     todayMilk += wToday.q;
     todaySale += wToday.a;
     const stockToday = computeStock(db, todayKey)[todayKey];
-    const buyToday = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE date = ?", todayKey);
-    const supplierPayable = (w("SELECT COALESCE(SUM(total),0) a FROM supplier_purchases").a || 0) - (w("SELECT COALESCE(SUM(amount),0) a FROM supplier_payments").a || 0);
+    const buyToday = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE TRIM(date) = TRIM(?) AND supplier_id IN (SELECT id FROM suppliers)", todayKey);
+    const buyMonth = w("SELECT COALESCE(SUM(liters),0) q, COALESCE(SUM(total),0) a FROM supplier_purchases WHERE date LIKE ? AND supplier_id IN (SELECT id FROM suppliers)", `${monthKey}-%`);
+    const supplierPayable = (w("SELECT COALESCE(SUM(total),0) a FROM supplier_purchases WHERE supplier_id IN (SELECT id FROM suppliers)").a || 0) - (w("SELECT COALESCE(SUM(amount),0) a FROM supplier_payments WHERE supplier_id IN (SELECT id FROM suppliers)").a || 0);
     const todayExpenses = w("SELECT COALESCE(SUM(amount), 0) a FROM expenses WHERE date = ?", todayKey)?.a || 0;
     const monthExpenses = w("SELECT COALESCE(SUM(amount), 0) a FROM expenses WHERE date LIKE ?", `${monthKey}-%`)?.a || 0;
     const gheeIn = w("SELECT COALESCE(SUM(quantity),0) q, COALESCE(SUM(total),0) t FROM ghee_transactions WHERE type = 'Inward'");
@@ -675,9 +1577,11 @@ function registerIpcHandlers() {
       return tb - ta;
     });
     return {
+      selectedMonth: monthKey,
       totalMilk: monthMilk,
       totalCustomers: customersCount,
       todaySale: Math.round(todaySale),
+      monthSale: Math.round(monthBilled),
       totalDue: Math.round(totalDue),
       todayMilk,
       todayPosQty,
@@ -685,6 +1589,8 @@ function registerIpcHandlers() {
       monthBilled: Math.round(monthBilled),
       todayPurchased: buyToday.q,
       todayPurchaseCost: Math.round(buyToday.a),
+      monthPurchased: buyMonth.q,
+      monthPurchaseCost: Math.round(buyMonth.a),
       stockAvailable: stockToday ? stockToday.closing : 0,
       stockOpeningToday: stockToday ? stockToday.opening : 0,
       supplierPayable: Math.round(supplierPayable),
@@ -700,21 +1606,22 @@ function registerIpcHandlers() {
       recentTransactions: recentActivity.slice(0, 15)
     };
   });
-  import_electron2.ipcMain.handle("customers:getAll", async () => {
+  import_electron4.ipcMain.handle("customers:getAll", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM customers ORDER BY sort_order ASC, id ASC").all();
   });
-  import_electron2.ipcMain.handle("customers:add", async (_event, customer) => {
+  import_electron4.ipcMain.handle("customers:add", async (_event, customer) => {
     const db = getDatabase();
     const insert = db.prepare(`
-      INSERT INTO customers (name, phone, address, default_rate, balance, previous_balance, sort_order, shift)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO customers (name, phone, address, default_rate, balance, previous_balance, sort_order, shift, whatsapp_consent)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), 0) as m FROM customers").get().m;
     const requested = Number(customer.position);
     const total = db.prepare("SELECT COUNT(*) as c FROM customers").get().c;
     const position = Number.isFinite(requested) && requested >= 1 ? Math.min(Math.floor(requested), total + 1) : maxOrder + 1;
     const previousBalance = Number(customer.previous_balance) || 0;
+    const consent = customer.whatsapp_consent !== void 0 ? customer.whatsapp_consent ? 1 : 0 : 1;
     const run = db.transaction(() => {
       db.prepare("UPDATE customers SET sort_order = sort_order + 1 WHERE sort_order >= ?").run(position);
       const result = insert.run(
@@ -725,14 +1632,15 @@ function registerIpcHandlers() {
         previousBalance,
         previousBalance,
         position,
-        normShift(customer.shift)
+        normShift(customer.shift),
+        consent
       );
       return result.lastInsertRowid;
     });
     const id = run();
     return { id, success: true };
   });
-  import_electron2.ipcMain.handle("customers:update", async (_event, customer) => {
+  import_electron4.ipcMain.handle("customers:update", async (_event, customer) => {
     const db = getDatabase();
     const current = db.prepare("SELECT * FROM customers WHERE id = ?").get(customer.id);
     if (!current) {
@@ -754,9 +1662,10 @@ function registerIpcHandlers() {
           ON CONFLICT(customer_id, month) DO UPDATE SET rate = excluded.rate
         `).run(customer.id, thisMonth, newRate);
       }
+      const consent = customer.whatsapp_consent !== void 0 ? customer.whatsapp_consent ? 1 : 0 : current.whatsapp_consent ?? 1;
       db.prepare(`
         UPDATE customers
-        SET name = ?, phone = ?, address = ?, default_rate = ?, previous_balance = ?, shift = ?
+        SET name = ?, phone = ?, address = ?, default_rate = ?, previous_balance = ?, shift = ?, whatsapp_consent = ?
         WHERE id = ?
       `).run(
         customer.name,
@@ -765,6 +1674,7 @@ function registerIpcHandlers() {
         customer.default_rate || 90,
         customer.previous_balance ?? current.previous_balance ?? 0,
         customer.shift ? normShift(customer.shift) : current.shift || "Morning",
+        consent,
         customer.id
       );
       if (customer.position && Number(customer.position) !== Number(current.sort_order)) {
@@ -788,7 +1698,7 @@ function registerIpcHandlers() {
     run();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("customers:delete", async (_event, id) => {
+  import_electron4.ipcMain.handle("customers:delete", async (_event, id) => {
     const db = getDatabase();
     const run = db.transaction(() => {
       db.prepare("DELETE FROM milk_entries WHERE customer_id = ?").run(id);
@@ -800,7 +1710,7 @@ function registerIpcHandlers() {
     run();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("customers:deleteMany", async (_event, ids) => {
+  import_electron4.ipcMain.handle("customers:deleteMany", async (_event, ids) => {
     if (!Array.isArray(ids) || ids.length === 0) {
       return { success: true, deleted: 0 };
     }
@@ -824,7 +1734,7 @@ function registerIpcHandlers() {
     const deleted = remove(ids);
     return { success: true, deleted };
   });
-  import_electron2.ipcMain.handle("customers:reorder", async (_event, orderedIds) => {
+  import_electron4.ipcMain.handle("customers:reorder", async (_event, orderedIds) => {
     if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
       return { success: true };
     }
@@ -836,7 +1746,7 @@ function registerIpcHandlers() {
     apply(orderedIds);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("sales:getAll", async (_event, filters) => {
+  import_electron4.ipcMain.handle("sales:getAll", async (_event, filters) => {
     const db = getDatabase();
     let query = `
       SELECT id, date, customer_name, quantity, rate, total_amount, payment_status, notes, created_at
@@ -855,7 +1765,7 @@ function registerIpcHandlers() {
     query += " ORDER BY id DESC";
     return db.prepare(query).all(...params);
   });
-  import_electron2.ipcMain.handle("sales:add", async (_event, sale) => {
+  import_electron4.ipcMain.handle("sales:add", async (_event, sale) => {
     const db = getDatabase();
     const result = db.prepare(`
       INSERT INTO sales (date, customer_id, customer_name, quantity, rate, total_amount, payment_status, notes)
@@ -872,7 +1782,7 @@ function registerIpcHandlers() {
     );
     return { id: result.lastInsertRowid, success: true };
   });
-  import_electron2.ipcMain.handle("khata:getMonth", async (_event, month) => {
+  import_electron4.ipcMain.handle("khata:getMonth", async (_event, month) => {
     const db = getDatabase();
     const customers = db.prepare(`
         SELECT c.id, c.name, c.phone, c.address, c.shift,
@@ -891,7 +1801,7 @@ function registerIpcHandlers() {
     }));
     return { customers, entries, received, carry };
   });
-  import_electron2.ipcMain.handle("khata:deleteCustomerMonth", async (_event, payload) => {
+  import_electron4.ipcMain.handle("khata:deleteCustomerMonth", async (_event, payload) => {
     const db = getDatabase();
     const run = db.transaction(() => {
       db.prepare("DELETE FROM milk_entries WHERE customer_id = ? AND entry_date LIKE ?").run(
@@ -906,14 +1816,14 @@ function registerIpcHandlers() {
     run();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("app:openExternal", async (_event, url) => {
+  import_electron4.ipcMain.handle("app:openExternal", async (_event, url) => {
     if (typeof url !== "string" || !url.startsWith("https://wa.me/")) {
       return { success: false };
     }
-    await import_electron2.shell.openExternal(url);
+    await import_electron4.shell.openExternal(url);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("pos:add", async (_event, sale) => {
+  import_electron4.ipcMain.handle("pos:add", async (_event, sale) => {
     const db = getDatabase();
     const quantity = Number(sale.quantity);
     const rate = Number(sale.rate);
@@ -929,24 +1839,24 @@ function registerIpcHandlers() {
     `).run(sale.date, (sale.customerName || "").trim() || "Walk-in", quantity, rate, total, status, method, sale.notes || "");
     return { success: true, id: result.lastInsertRowid };
   });
-  import_electron2.ipcMain.handle("pos:list", async (_event, date) => {
+  import_electron4.ipcMain.handle("pos:list", async (_event, date) => {
     const db = getDatabase();
     const base = `SELECT id, date, customer_name, quantity, rate, total_amount, payment_status, payment_method, notes, created_at
                   FROM sales WHERE customer_id IS NULL`;
     return date ? db.prepare(`${base} AND date = ? ORDER BY id DESC`).all(date) : db.prepare(`${base} ORDER BY date DESC, id DESC`).all();
   });
-  import_electron2.ipcMain.handle("pos:markPaid", async (_event, id, method) => {
+  import_electron4.ipcMain.handle("pos:markPaid", async (_event, id, method) => {
     const db = getDatabase();
     const m = ["Cash", "Easypaisa", "JazzCash"].includes(method) ? method : "Cash";
     db.prepare("UPDATE sales SET payment_status = 'Paid', payment_method = ? WHERE id = ? AND customer_id IS NULL").run(m, id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("pos:delete", async (_event, id) => {
+  import_electron4.ipcMain.handle("pos:delete", async (_event, id) => {
     const db = getDatabase();
     db.prepare("DELETE FROM sales WHERE id = ? AND customer_id IS NULL").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("pos:update", async (_event, sale) => {
+  import_electron4.ipcMain.handle("pos:update", async (_event, sale) => {
     const db = getDatabase();
     const quantity = Number(sale.quantity);
     const rate = Number(sale.rate);
@@ -973,7 +1883,7 @@ function registerIpcHandlers() {
     );
     return { success: true };
   });
-  import_electron2.ipcMain.handle("khata:setPrevious", async (_e, p) => {
+  import_electron4.ipcMain.handle("khata:setPrevious", async (_e, p) => {
     const db = getDatabase();
     if (p.amount === null || p.amount === void 0 || !Number.isFinite(Number(p.amount))) {
       db.prepare("DELETE FROM khata_opening_override WHERE customer_id = ? AND month = ?").run(p.customerId, p.month);
@@ -983,11 +1893,11 @@ function registerIpcHandlers() {
     }
     return { success: true };
   });
-  import_electron2.ipcMain.handle("expenses:list", async (_e, month) => {
+  import_electron4.ipcMain.handle("expenses:list", async (_e, month) => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM expenses WHERE date LIKE ? ORDER BY date DESC, id DESC").all(`${month}-%`);
   });
-  import_electron2.ipcMain.handle("expenses:add", async (_e, x) => {
+  import_electron4.ipcMain.handle("expenses:add", async (_e, x) => {
     const cats = ["Shop", "Home", "Drawer", "Fleet", "Other"];
     if (!cats.includes(x.category) || !x.title?.trim() || !(Number(x.amount) > 0) || !DATE_RE.test(x.date || "")) {
       return { success: false, error: "Invalid expense data" };
@@ -996,11 +1906,11 @@ function registerIpcHandlers() {
     const r = db.prepare(`INSERT INTO expenses (category, title, amount, date, paid_to, source, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(x.category, x.title.trim(), Number(x.amount), x.date, x.paidTo || "", x.source || "Cash", x.notes || "");
     return { success: true, id: Number(r.lastInsertRowid) };
   });
-  import_electron2.ipcMain.handle("expenses:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("expenses:delete", async (_e, id) => {
     getDatabase().prepare("DELETE FROM expenses WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("expenses:update", async (_e, x) => {
+  import_electron4.ipcMain.handle("expenses:update", async (_e, x) => {
     const cats = ["Shop", "Home", "Drawer", "Fleet", "Other"];
     if (!x.id || !cats.includes(x.category) || !x.title?.trim() || !(Number(x.amount) > 0) || !DATE_RE.test(x.date || "")) {
       return { success: false, error: "Invalid expense data" };
@@ -1009,11 +1919,11 @@ function registerIpcHandlers() {
     db.prepare(`UPDATE expenses SET category = ?, title = ?, amount = ?, date = ?, paid_to = ?, source = ?, notes = ? WHERE id = ?`).run(x.category, x.title.trim(), Number(x.amount), x.date, x.paidTo || "", x.source || "Cash", x.notes || "", x.id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("ghee:list", async () => {
+  import_electron4.ipcMain.handle("ghee:list", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM ghee_transactions ORDER BY date DESC, id DESC").all();
   });
-  import_electron2.ipcMain.handle("ghee:add", async (_e, g) => {
+  import_electron4.ipcMain.handle("ghee:add", async (_e, g) => {
     if (!["Inward", "Outward"].includes(g.type) || !(Number(g.quantity) > 0) || !(Number(g.rate) >= 0) || !DATE_RE.test(g.date || "")) {
       return { success: false, error: "Invalid ghee transaction" };
     }
@@ -1024,11 +1934,11 @@ function registerIpcHandlers() {
     const r = db.prepare(`INSERT INTO ghee_transactions (type, quantity, rate, total, payment, party, date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(g.type, quantity, rate, total, payment, g.party || "", g.date, g.notes || "");
     return { success: true, id: Number(r.lastInsertRowid) };
   });
-  import_electron2.ipcMain.handle("ghee:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("ghee:delete", async (_e, id) => {
     getDatabase().prepare("DELETE FROM ghee_transactions WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("ghee:update", async (_e, id, g) => {
+  import_electron4.ipcMain.handle("ghee:update", async (_e, id, g) => {
     if (!["Inward", "Outward"].includes(g.type) || !(Number(g.quantity) > 0) || !(Number(g.rate) >= 0) || !DATE_RE.test(g.date || "")) {
       return { success: false, error: "Invalid ghee transaction" };
     }
@@ -1039,11 +1949,11 @@ function registerIpcHandlers() {
     db.prepare(`UPDATE ghee_transactions SET type=?, quantity=?, rate=?, total=?, payment=?, party=?, date=?, notes=? WHERE id=?`).run(g.type, quantity, rate, total, payment, g.party || "", g.date, g.notes || "", id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("shopper:list", async () => {
+  import_electron4.ipcMain.handle("shopper:list", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM shopper_transactions ORDER BY date DESC, id DESC").all();
   });
-  import_electron2.ipcMain.handle("shopper:add", async (_e, s) => {
+  import_electron4.ipcMain.handle("shopper:add", async (_e, s) => {
     if (!["Inward", "Outward"].includes(s.type) || !(Number(s.quantity) > 0) || !(Number(s.rate) >= 0) || !DATE_RE.test(s.date || "")) {
       return { success: false, error: "Invalid shopper transaction" };
     }
@@ -1054,11 +1964,11 @@ function registerIpcHandlers() {
     const r = db.prepare(`INSERT INTO shopper_transactions (type, sizes, quantity, rate, total, payment, party, date, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(s.type, (s.sizes || []).join(","), quantity, rate, total, payment, s.party || "", s.date, s.notes || "");
     return { success: true, id: Number(r.lastInsertRowid) };
   });
-  import_electron2.ipcMain.handle("shopper:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("shopper:delete", async (_e, id) => {
     getDatabase().prepare("DELETE FROM shopper_transactions WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("shopper:update", async (_e, id, s) => {
+  import_electron4.ipcMain.handle("shopper:update", async (_e, id, s) => {
     if (!["Inward", "Outward"].includes(s.type) || !(Number(s.quantity) > 0) || !(Number(s.rate) >= 0) || !DATE_RE.test(s.date || "")) {
       return { success: false, error: "Invalid shopper transaction" };
     }
@@ -1069,18 +1979,18 @@ function registerIpcHandlers() {
     db.prepare(`UPDATE shopper_transactions SET type=?, sizes=?, quantity=?, rate=?, total=?, payment=?, party=?, date=?, notes=? WHERE id=?`).run(s.type, (s.sizes || []).join(","), quantity, rate, total, payment, s.party || "", s.date, s.notes || "", id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("billSettings:get", async () => {
+  import_electron4.ipcMain.handle("billSettings:get", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM bill_settings WHERE id = 1").get();
   });
-  import_electron2.ipcMain.handle("billSettings:save", async (_e, s) => {
+  import_electron4.ipcMain.handle("billSettings:save", async (_e, s) => {
     getDatabase().prepare(`
       UPDATE bill_settings SET shop_title = ?, owner_name = ?, phone = ?, bank_name = ?, account_title = ?, account_number = ? WHERE id = 1
     `).run(s.shop_title || "", s.owner_name || "", s.phone || "", s.bank_name || "", s.account_title || "", s.account_number || "");
     return { success: true };
   });
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-  import_electron2.ipcMain.handle("suppliers:list", async (_e, month) => {
+  import_electron4.ipcMain.handle("suppliers:list", async (_e, month) => {
     const db = getDatabase();
     return db.prepare(`
       SELECT s.id, s.name, s.phone, s.address, s.default_rate,
@@ -1093,19 +2003,19 @@ function registerIpcHandlers() {
       FROM suppliers s ORDER BY s.name COLLATE NOCASE
     `).all({ like: `${month}-%` });
   });
-  import_electron2.ipcMain.handle("suppliers:add", async (_e, s) => {
+  import_electron4.ipcMain.handle("suppliers:add", async (_e, s) => {
     if (!s.name || !s.name.trim()) return { success: false, error: "Name required" };
     const db = getDatabase();
     const r = db.prepare("INSERT INTO suppliers (name, phone, address, default_rate) VALUES (?, ?, ?, ?)").run(s.name.trim(), s.phone || "", s.address || "", Number(s.default_rate) || 0);
     return { success: true, id: Number(r.lastInsertRowid) };
   });
-  import_electron2.ipcMain.handle("suppliers:update", async (_e, s) => {
+  import_electron4.ipcMain.handle("suppliers:update", async (_e, s) => {
     if (!s.name || !s.name.trim()) return { success: false, error: "Name required" };
     const db = getDatabase();
     db.prepare("UPDATE suppliers SET name = ?, phone = ?, address = ?, default_rate = ? WHERE id = ?").run(s.name.trim(), s.phone || "", s.address || "", Number(s.default_rate) || 0, s.id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("suppliers:delete", async (_e, id) => {
     const db = getDatabase();
     const run = db.transaction(() => {
       db.prepare("DELETE FROM supplier_purchases WHERE supplier_id = ?").run(id);
@@ -1116,7 +2026,7 @@ function registerIpcHandlers() {
     run();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:deleteMany", async (_e, ids) => {
+  import_electron4.ipcMain.handle("suppliers:deleteMany", async (_e, ids) => {
     if (!Array.isArray(ids) || ids.length === 0) {
       return { success: true, deleted: 0 };
     }
@@ -1138,7 +2048,7 @@ function registerIpcHandlers() {
     const deleted = remove(ids);
     return { success: true, deleted };
   });
-  import_electron2.ipcMain.handle("suppliers:addPurchase", async (_e, p) => {
+  import_electron4.ipcMain.handle("suppliers:addPurchase", async (_e, p) => {
     const liters = Number(p.liters), rate = Number(p.rate), paid = Number(p.paid) || 0;
     if (!p.supplierId || !(liters > 0) || !(rate >= 0) || !DATE_RE.test(p.date || "")) {
       return { success: false, error: "Invalid purchase data" };
@@ -1153,24 +2063,24 @@ function registerIpcHandlers() {
     })();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:addPayment", async (_e, p) => {
+  import_electron4.ipcMain.handle("suppliers:addPayment", async (_e, p) => {
     const amount = Number(p.amount);
     if (!p.supplierId || !(amount > 0) || !DATE_RE.test(p.date || "")) return { success: false, error: "Invalid payment data" };
     getDatabase().prepare("INSERT INTO supplier_payments (supplier_id, date, amount, notes) VALUES (?, ?, ?, ?)").run(p.supplierId, p.date, amount, p.notes || "");
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:ledger", async (_e, supplierId) => {
+  import_electron4.ipcMain.handle("suppliers:ledger", async (_e, supplierId) => {
     const db = getDatabase();
     return {
       purchases: db.prepare("SELECT id, date, liters, rate, total, notes FROM supplier_purchases WHERE supplier_id = ? ORDER BY date DESC, id DESC").all(supplierId),
       payments: db.prepare("SELECT id, date, amount, notes FROM supplier_payments WHERE supplier_id = ? ORDER BY date DESC, id DESC").all(supplierId)
     };
   });
-  import_electron2.ipcMain.handle("suppliers:deletePurchase", async (_e, id) => {
+  import_electron4.ipcMain.handle("suppliers:deletePurchase", async (_e, id) => {
     getDatabase().prepare("DELETE FROM supplier_purchases WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:updatePurchase", async (_e, p) => {
+  import_electron4.ipcMain.handle("suppliers:updatePurchase", async (_e, p) => {
     const db = getDatabase();
     const liters = Number(p.liters) || 0;
     const rate = Number(p.rate) || 0;
@@ -1182,16 +2092,16 @@ function registerIpcHandlers() {
     }
     return { success: true };
   });
-  import_electron2.ipcMain.handle("stock:deleteAllPurchases", async (_e, month) => {
+  import_electron4.ipcMain.handle("stock:deleteAllPurchases", async (_e, month) => {
     const db = getDatabase();
     db.prepare("DELETE FROM supplier_purchases WHERE date LIKE ?").run(`${month}-%`);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("suppliers:deletePayment", async (_e, id) => {
+  import_electron4.ipcMain.handle("suppliers:deletePayment", async (_e, id) => {
     getDatabase().prepare("DELETE FROM supplier_payments WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("ssheet:getMonth", async (_e, month) => {
+  import_electron4.ipcMain.handle("ssheet:getMonth", async (_e, month) => {
     const db = getDatabase();
     const suppliers = db.prepare("SELECT id, name, phone, default_rate FROM suppliers ORDER BY name COLLATE NOCASE").all();
     const entries = db.prepare(`SELECT supplier_id, date, COALESCE(shift, 'Morning') AS shift, SUM(liters) AS liters, SUM(total) AS total
@@ -1201,7 +2111,7 @@ function registerIpcHandlers() {
     const carry = Object.entries(carryMap).map(([id, amount]) => ({ supplier_id: Number(id), amount }));
     return { suppliers, entries, paid, carry };
   });
-  import_electron2.ipcMain.handle("ssheet:setCell", async (_e, p) => {
+  import_electron4.ipcMain.handle("ssheet:setCell", async (_e, p) => {
     if (!p.supplierId || !DATE_RE.test(p.date || "")) return { success: false };
     const db = getDatabase();
     const liters = Number(p.liters);
@@ -1225,7 +2135,7 @@ function registerIpcHandlers() {
     })();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("ssheet:bulkFill", async (_e, p) => {
+  import_electron4.ipcMain.handle("ssheet:bulkFill", async (_e, p) => {
     const liters = Number(p.liters);
     if (!Array.isArray(p.supplierIds) || !p.supplierIds.length || !(liters > 0)) return { success: false, error: "Invalid data", updated: 0 };
     const db = getDatabase();
@@ -1257,7 +2167,7 @@ function registerIpcHandlers() {
     })();
     return { success: true, updated };
   });
-  import_electron2.ipcMain.handle("ssheet:deleteMonth", async (_e, p) => {
+  import_electron4.ipcMain.handle("ssheet:deleteMonth", async (_e, p) => {
     const db = getDatabase();
     db.transaction(() => {
       if (p.shift) {
@@ -1271,12 +2181,12 @@ function registerIpcHandlers() {
     })();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("ssheet:setPrevious", async (_e, p) => {
+  import_electron4.ipcMain.handle("ssheet:setPrevious", async (_e, p) => {
     getDatabase().prepare(`INSERT INTO supplier_opening_override (supplier_id, month, amount) VALUES (?, ?, ?)
       ON CONFLICT(supplier_id, month) DO UPDATE SET amount = excluded.amount`).run(p.supplierId, p.month, Number(p.amount) || 0);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("stock:getDay", async (_e, date) => {
+  import_electron4.ipcMain.handle("stock:getDay", async (_e, date) => {
     const db = getDatabase();
     let activeRate = 240;
     try {
@@ -1294,12 +2204,12 @@ function registerIpcHandlers() {
              COUNT(DISTINCT supplier_id) as suppliers_count,
              COALESCE(SUM(total), 0) as total
       FROM supplier_purchases
-      WHERE date = ?
+      WHERE TRIM(date) = TRIM(?) AND supplier_id IN (SELECT id FROM suppliers)
     `).get(date);
     const receivedToday = Number(sup?.liters) || 0;
     const supplierCount = Number(sup?.suppliers_count) || 0;
     const receivedTotalCost = Number(sup?.total) || receivedToday * activeRate;
-    const pos = db.prepare("SELECT COALESCE(SUM(quantity), 0) as qty, COALESCE(SUM(total), 0) as total FROM sales WHERE customer_id IS NULL AND date = ?").get(date);
+    const pos = db.prepare("SELECT COALESCE(SUM(quantity), 0) as qty, COALESCE(SUM(total_amount), 0) as total FROM sales WHERE customer_id IS NULL AND date = ?").get(date);
     const soldPos = Number(pos?.qty) || 0;
     const soldPosRevenue = Number(pos?.total) || Math.round(soldPos * activeRate);
     const khata = db.prepare(`
@@ -1349,7 +2259,7 @@ function registerIpcHandlers() {
       id: existing?.id
     };
   });
-  import_electron2.ipcMain.handle("stock:saveDay", async (_e, payload) => {
+  import_electron4.ipcMain.handle("stock:saveDay", async (_e, payload) => {
     const db = getDatabase();
     db.prepare(`
       INSERT INTO daily_stock_records (date, yesterday_leftover, received_today, sold_today, leftover_tomorrow, rate, dahi_kg, dahi_milk_used, notes)
@@ -1377,7 +2287,7 @@ function registerIpcHandlers() {
     );
     return { success: true };
   });
-  import_electron2.ipcMain.handle("stock:getHistory", async (_e, limit = 14) => {
+  import_electron4.ipcMain.handle("stock:getHistory", async (_e, limit = 14) => {
     const db = getDatabase();
     let activeRate = 240;
     try {
@@ -1412,17 +2322,17 @@ function registerIpcHandlers() {
     }
     return history;
   });
-  import_electron2.ipcMain.handle("stock:deleteDailyRecord", async (_e, id) => {
+  import_electron4.ipcMain.handle("stock:deleteDailyRecord", async (_e, id) => {
     const db = getDatabase();
     db.prepare("DELETE FROM daily_stock_records WHERE id = ?").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("stock:deleteAllDailyRecords", async () => {
+  import_electron4.ipcMain.handle("stock:deleteAllDailyRecords", async () => {
     const db = getDatabase();
     db.prepare("DELETE FROM daily_stock_records").run();
     return { success: true };
   });
-  import_electron2.ipcMain.handle("stock:getMonth", async (_e, month) => {
+  import_electron4.ipcMain.handle("stock:getMonth", async (_e, month) => {
     const db = getDatabase();
     const [y, m] = month.split("-").map(Number);
     const days = new Date(y, m, 0).getDate();
@@ -1440,9 +2350,9 @@ function registerIpcHandlers() {
     `).all(`${month}-%`);
     return { rows, purchases, report: monthReport(db, month) };
   });
-  import_electron2.ipcMain.handle("records:monthly", async () => {
+  import_electron4.ipcMain.handle("records:monthly", async () => {
     const db = getDatabase();
-    const customers = db.prepare("SELECT id, name, phone, default_rate, previous_balance FROM customers ORDER BY sort_order ASC, id ASC").all();
+    const customers = db.prepare("SELECT id, name, phone, address, default_rate, previous_balance, whatsapp_consent FROM customers ORDER BY sort_order ASC, id ASC").all();
     const qty = db.prepare(`SELECT customer_id, substr(entry_date,1,7) AS m, SUM(quantity) AS liters
                 FROM milk_entries GROUP BY customer_id, m`).all();
     const pays = db.prepare("SELECT customer_id, month AS m, amount FROM received_payments").all();
@@ -1485,6 +2395,8 @@ function registerIpcHandlers() {
         id: c.id,
         name: c.name,
         phone: c.phone,
+        address: c.address,
+        whatsapp_consent: c.whatsapp_consent !== 0,
         openingBalance: Number(c.previous_balance) || 0,
         totalLiters,
         totalBilled: Math.round(totalBilled),
@@ -1495,13 +2407,13 @@ function registerIpcHandlers() {
       };
     });
   });
-  import_electron2.ipcMain.handle("khata:setEntry", async (_event, payload) => {
+  import_electron4.ipcMain.handle("khata:setEntry", async (_event, payload) => {
     const db = getDatabase();
     const qty = Number(payload.quantity);
     if (!payload.customerId || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date || "")) {
       return { success: false, error: "customerId and a valid YYYY-MM-DD date are required" };
     }
-    if (!Number.isFinite(qty) || qty <= 0) {
+    if (payload.cleared || !Number.isFinite(qty) || qty < 0) {
       db.prepare("DELETE FROM milk_entries WHERE customer_id = ? AND entry_date = ?").run(
         payload.customerId,
         payload.date
@@ -1517,7 +2429,7 @@ function registerIpcHandlers() {
     `).run(payload.customerId, payload.date, qty);
     return { success: true, cleared: false };
   });
-  import_electron2.ipcMain.handle("khata:setReceived", async (_event, payload) => {
+  import_electron4.ipcMain.handle("khata:setReceived", async (_event, payload) => {
     const db = getDatabase();
     const amount = Number(payload.amount);
     if (!payload.customerId || !payload.month) {
@@ -1539,7 +2451,7 @@ function registerIpcHandlers() {
     `).run(payload.customerId, payload.month, amount);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("khata:bulkFill", async (_event, payload) => {
+  import_electron4.ipcMain.handle("khata:bulkFill", async (_event, payload) => {
     const db = getDatabase();
     const { customerIds, month, quantity } = payload;
     const fromDay = Math.max(1, Math.floor(Number(payload.fromDay) || 1));
@@ -1576,11 +2488,11 @@ function registerIpcHandlers() {
     apply();
     return { success: true, updated };
   });
-  import_electron2.ipcMain.handle("operators:list", async () => {
+  import_electron4.ipcMain.handle("operators:list", async () => {
     const db = getDatabase();
     return db.prepare("SELECT id, username, name, role, created_at FROM operators ORDER BY id ASC").all();
   });
-  import_electron2.ipcMain.handle("operators:add", async (_e, op) => {
+  import_electron4.ipcMain.handle("operators:add", async (_e, op) => {
     if (!op.username?.trim() || !op.name?.trim() || !op.password?.trim()) {
       return { success: false, error: "\u062A\u0645\u0627\u0645 \u062E\u0627\u0646\u06D2 \u067E\u0631 \u06A9\u0631\u06CC\u06BA" };
     }
@@ -1592,12 +2504,12 @@ function registerIpcHandlers() {
       return { success: false, error: "\u06CC\u06C1 \u06CC\u0648\u0632\u0631 \u0646\u06CC\u0645 \u067E\u06C1\u0644\u06D2 \u0633\u06D2 \u0645\u0648\u062C\u0648\u062F \u06C1\u06D2" };
     }
   });
-  import_electron2.ipcMain.handle("operators:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("operators:delete", async (_e, id) => {
     const db = getDatabase();
     db.prepare("DELETE FROM operators WHERE id = ? AND username != 'admin'").run(id);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("auth:changePassword", async (_e, p) => {
+  import_electron4.ipcMain.handle("auth:changePassword", async (_e, p) => {
     const db = getDatabase();
     const stored = db.prepare("SELECT value FROM settings WHERE key = 'admin_password'").get();
     const current = stored?.value || "admin";
@@ -1611,7 +2523,7 @@ function registerIpcHandlers() {
     db.prepare("UPDATE operators SET password = ? WHERE username = 'admin'").run(p.newPassword);
     return { success: true };
   });
-  import_electron2.ipcMain.handle("auth:updateAdminCredentials", async (_e, p) => {
+  import_electron4.ipcMain.handle("auth:updateAdminCredentials", async (_e, p) => {
     const db = getDatabase();
     if (p.username && p.username.trim()) {
       const u = p.username.trim();
@@ -1625,7 +2537,7 @@ function registerIpcHandlers() {
     }
     return { success: true };
   });
-  import_electron2.ipcMain.handle("pricing:get", async () => {
+  import_electron4.ipcMain.handle("pricing:get", async () => {
     const db = getDatabase();
     const curr = db.prepare("SELECT value FROM settings WHERE key = 'milk_price'").get();
     const prev = db.prepare("SELECT value FROM settings WHERE key = 'prev_milk_price'").get();
@@ -1636,7 +2548,7 @@ function registerIpcHandlers() {
       history
     };
   });
-  import_electron2.ipcMain.handle("pricing:save", async (_e, p) => {
+  import_electron4.ipcMain.handle("pricing:save", async (_e, p) => {
     if (!(p.rate > 0)) return { success: false, error: "\u062F\u0631\u0633\u062A \u0631\u06CC\u0679 \u0644\u06A9\u06BE\u06CC\u06BA" };
     const db = getDatabase();
     const curr = db.prepare("SELECT value FROM settings WHERE key = 'milk_price'").get();
@@ -1650,22 +2562,22 @@ function registerIpcHandlers() {
     }
     return { success: true };
   });
-  import_electron2.ipcMain.handle("backup:getOverview", async () => {
+  import_electron4.ipcMain.handle("backup:getOverview", async () => {
     const dbPath = getDatabasePath();
     let dbSizeBytes = 0;
     try {
-      if (import_fs2.default.existsSync(dbPath)) {
-        dbSizeBytes = import_fs2.default.statSync(dbPath).size;
+      if (import_fs4.default.existsSync(dbPath)) {
+        dbSizeBytes = import_fs4.default.statSync(dbPath).size;
       }
     } catch {
     }
-    const documentsDir = import_electron2.app.getPath("documents");
-    const localBackupDir = import_path2.default.join(documentsDir, "DairyBackups");
+    const documentsDir = import_electron4.app.getPath("documents");
+    const localBackupDir = import_path4.default.join(documentsDir, "DairyBackups");
     let localBackupsCount = 0;
     let latestLocalBackup = null;
     try {
-      if (import_fs2.default.existsSync(localBackupDir)) {
-        const files = import_fs2.default.readdirSync(localBackupDir).filter((f) => f.endsWith(".db")).sort();
+      if (import_fs4.default.existsSync(localBackupDir)) {
+        const files = import_fs4.default.readdirSync(localBackupDir).filter((f) => f.endsWith(".db")).sort();
         localBackupsCount = files.length;
         if (files.length > 0) {
           latestLocalBackup = files[files.length - 1].replace("dairy-", "").replace(".db", "");
@@ -1708,33 +2620,33 @@ function registerIpcHandlers() {
       detectedUsbCount: drives.filter((d) => d.type.includes("USB")).length
     };
   });
-  import_electron2.ipcMain.handle("backup:toUsb", async (_e, driveLetter) => {
+  import_electron4.ipcMain.handle("backup:toUsb", async (_e, driveLetter) => {
     try {
       const dbPath = getDatabasePath();
-      if (!import_fs2.default.existsSync(dbPath)) return { success: false, error: "Database file not found" };
+      if (!import_fs4.default.existsSync(dbPath)) return { success: false, error: "Database file not found" };
       const targetDrive = driveLetter || "E:";
-      const targetDir = import_path2.default.join(targetDrive, "DairyBackups");
-      if (!import_fs2.default.existsSync(targetDir)) {
-        import_fs2.default.mkdirSync(targetDir, { recursive: true });
+      const targetDir = import_path4.default.join(targetDrive, "DairyBackups");
+      if (!import_fs4.default.existsSync(targetDir)) {
+        import_fs4.default.mkdirSync(targetDir, { recursive: true });
       }
       const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-      const targetFile = import_path2.default.join(targetDir, `dairy-${todayStr}.db`);
-      import_fs2.default.copyFileSync(dbPath, targetFile);
+      const targetFile = import_path4.default.join(targetDir, `dairy-${todayStr}.db`);
+      import_fs4.default.copyFileSync(dbPath, targetFile);
       return { success: true, copiedTo: [targetFile] };
     } catch (err) {
       return { success: false, error: err.message };
     }
   });
-  import_electron2.ipcMain.handle("backup:exportDb", async () => {
+  import_electron4.ipcMain.handle("backup:exportDb", async () => {
     try {
       const dbPath = getDatabasePath();
-      const res = await import_electron2.dialog.showSaveDialog({
+      const res = await import_electron4.dialog.showSaveDialog({
         title: "Save Database Backup",
         defaultPath: `dairy-backup-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.db`,
         filters: [{ name: "SQLite Database", extensions: ["db"] }]
       });
       if (!res.canceled && res.filePath) {
-        import_fs2.default.copyFileSync(dbPath, res.filePath);
+        import_fs4.default.copyFileSync(dbPath, res.filePath);
         return { success: true, path: res.filePath };
       }
       return { success: false, error: "Cancelled" };
@@ -1742,9 +2654,9 @@ function registerIpcHandlers() {
       return { success: false, error: err.message };
     }
   });
-  import_electron2.ipcMain.handle("backup:restoreDb", async () => {
+  import_electron4.ipcMain.handle("backup:restoreDb", async () => {
     try {
-      const res = await import_electron2.dialog.showOpenDialog({
+      const res = await import_electron4.dialog.showOpenDialog({
         title: "Select Database Backup to Restore",
         filters: [{ name: "SQLite Database", extensions: ["db"] }],
         properties: ["openFile"]
@@ -1753,10 +2665,10 @@ function registerIpcHandlers() {
         const sourcePath = res.filePaths[0];
         const dbPath = getDatabasePath();
         const safetyPath = `${dbPath}.pre-restore-${Date.now()}`;
-        if (import_fs2.default.existsSync(dbPath)) {
-          import_fs2.default.copyFileSync(dbPath, safetyPath);
+        if (import_fs4.default.existsSync(dbPath)) {
+          import_fs4.default.copyFileSync(dbPath, safetyPath);
         }
-        import_fs2.default.copyFileSync(sourcePath, dbPath);
+        import_fs4.default.copyFileSync(sourcePath, dbPath);
         return { success: true };
       }
       return { success: false, error: "Cancelled" };
@@ -1764,7 +2676,7 @@ function registerIpcHandlers() {
       return { success: false, error: err.message };
     }
   });
-  import_electron2.ipcMain.handle("backup:exportJson", async () => {
+  import_electron4.ipcMain.handle("backup:exportJson", async () => {
     try {
       const db = getDatabase();
       const data = {
@@ -1783,13 +2695,13 @@ function registerIpcHandlers() {
         vehicles: db.prepare("SELECT * FROM vehicles").all(),
         milk_price_history: db.prepare("SELECT * FROM milk_price_history").all()
       };
-      const res = await import_electron2.dialog.showSaveDialog({
+      const res = await import_electron4.dialog.showSaveDialog({
         title: "Export JSON Backup",
         defaultPath: `dairy-backup-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`,
         filters: [{ name: "JSON Document", extensions: ["json"] }]
       });
       if (!res.canceled && res.filePath) {
-        import_fs2.default.writeFileSync(res.filePath, JSON.stringify(data, null, 2), "utf8");
+        import_fs4.default.writeFileSync(res.filePath, JSON.stringify(data, null, 2), "utf8");
         return { success: true, path: res.filePath };
       }
       return { success: false, error: "Cancelled" };
@@ -1797,7 +2709,7 @@ function registerIpcHandlers() {
       return { success: false, error: err.message };
     }
   });
-  import_electron2.ipcMain.handle("backup:exportCsv", async () => {
+  import_electron4.ipcMain.handle("backup:exportCsv", async () => {
     try {
       const db = getDatabase();
       const sales = db.prepare("SELECT * FROM sales ORDER BY id DESC").all();
@@ -1806,13 +2718,13 @@ function registerIpcHandlers() {
         (s) => `"${s.id}","${s.date}","${s.customer_name || ""}","${s.quantity}","${s.rate}","${s.total_amount}","${s.payment_status}","${(s.notes || "").replace(/"/g, '""')}"`
       ).join("\n");
       const csv = header + rows;
-      const res = await import_electron2.dialog.showSaveDialog({
+      const res = await import_electron4.dialog.showSaveDialog({
         title: "Export CSV Archive",
         defaultPath: `dairy-sales-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`,
         filters: [{ name: "CSV File", extensions: ["csv"] }]
       });
       if (!res.canceled && res.filePath) {
-        import_fs2.default.writeFileSync(res.filePath, "\uFEFF" + csv, "utf8");
+        import_fs4.default.writeFileSync(res.filePath, "\uFEFF" + csv, "utf8");
         return { success: true, path: res.filePath };
       }
       return { success: false, error: "Cancelled" };
@@ -1820,23 +2732,70 @@ function registerIpcHandlers() {
       return { success: false, error: err.message };
     }
   });
-  import_electron2.ipcMain.handle("whatsapp:getStatus", async () => {
-    return {
-      isConnected: false,
-      isConnecting: false,
-      phoneNumber: null,
-      userName: null,
-      qrCode: null
-    };
+  import_electron4.ipcMain.handle("whatsapp:getStatus", async () => {
+    return getWhatsAppCloudStatus();
   });
-  import_electron2.ipcMain.handle("whatsapp:disconnect", async () => {
+  import_electron4.ipcMain.handle("whatsapp:getCloudStatus", async () => {
+    return getWhatsAppCloudStatus();
+  });
+  import_electron4.ipcMain.handle("whatsapp:sendSingleBill", async (_e, payload) => {
+    return sendSingleCustomerBill(payload.item, payload.settings, payload.force);
+  });
+  import_electron4.ipcMain.handle("whatsapp:getLogs", async (_e, month) => {
+    return getLocalWhatsAppBillLogs(month);
+  });
+  import_electron4.ipcMain.handle("whatsapp:setConsent", async (_e, payload) => {
+    const db = getDatabase();
+    db.prepare("UPDATE customers SET whatsapp_consent = ?, whatsapp_opt_out_at = ? WHERE id = ?").run(
+      payload.consent ? 1 : 0,
+      payload.consent ? null : (/* @__PURE__ */ new Date()).toISOString(),
+      payload.customerId
+    );
     return { success: true };
   });
-  import_electron2.ipcMain.handle("vehicles:list", async () => {
+  import_electron4.ipcMain.handle("whatsapp:disconnect", async () => {
+    return { success: true };
+  });
+  import_electron4.ipcMain.handle("cloud:getConfig", async () => {
+    return getCloudConfig();
+  });
+  import_electron4.ipcMain.handle("cloud:saveConfig", async (_e, config) => {
+    saveCloudConfig(config);
+    return { success: true };
+  });
+  import_electron4.ipcMain.handle("cloud:getConnectionStatus", async () => {
+    return getConnectionStatus();
+  });
+  import_electron4.ipcMain.handle("cloud:sync", async () => {
+    return performCloudSync();
+  });
+  import_electron4.ipcMain.handle("cloud:getSyncMeta", async () => {
+    return getLocalSyncMeta();
+  });
+  import_electron4.ipcMain.handle("cloud:createBackup", async (event, notes) => {
+    return createAndUploadCloudBackup((stage, percent) => {
+      event.sender.send("backup:progress", { stage, percent });
+    }, notes);
+  });
+  import_electron4.ipcMain.handle("cloud:cancelBackup", async () => {
+    return { cancelled: cancelActiveBackup() };
+  });
+  import_electron4.ipcMain.handle("cloud:getHistory", async () => {
+    return getCloudBackupHistory();
+  });
+  import_electron4.ipcMain.handle("cloud:restoreBackup", async (event, backupId) => {
+    return restoreCloudBackup(backupId, (stage, percent) => {
+      event.sender.send("restore:progress", { stage, percent });
+    });
+  });
+  import_electron4.ipcMain.handle("bill:renderImage", async (_e, data) => {
+    return generateBillImage(data);
+  });
+  import_electron4.ipcMain.handle("vehicles:list", async () => {
     const db = getDatabase();
     return db.prepare("SELECT * FROM vehicles ORDER BY id ASC").all();
   });
-  import_electron2.ipcMain.handle("vehicles:add", async (_e, v) => {
+  import_electron4.ipcMain.handle("vehicles:add", async (_e, v) => {
     if (!v.name?.trim()) return { success: false, error: "\u0646\u0627\u0645 \u0644\u06A9\u06BE\u06CC\u06BA" };
     const db = getDatabase();
     db.prepare("INSERT INTO vehicles (name, reg_number, type, assigned_to) VALUES (?, ?, ?, ?)").run(
@@ -1847,7 +2806,7 @@ function registerIpcHandlers() {
     );
     return { success: true };
   });
-  import_electron2.ipcMain.handle("vehicles:delete", async (_e, id) => {
+  import_electron4.ipcMain.handle("vehicles:delete", async (_e, id) => {
     getDatabase().prepare("DELETE FROM vehicles WHERE id = ?").run(id);
     return { success: true };
   });
@@ -1972,23 +2931,47 @@ function supplierCarry(db, month) {
 
 // src/main/main.ts
 var mainWindow = null;
-var isDev = process.env.NODE_ENV === "development" || !import_electron3.app.isPackaged;
+var isForceQuit = false;
+var isDev = process.env.NODE_ENV === "development" || !import_electron5.app.isPackaged;
+function getAppIconPath() {
+  const candidates = [
+    import_path5.default.join(process.resourcesPath, "public/icon.ico"),
+    import_path5.default.join(process.resourcesPath, "icon.ico"),
+    import_path5.default.join(import_electron5.app.getAppPath(), "public/icon.ico"),
+    import_path5.default.join(import_electron5.app.getAppPath(), "dist/icon.ico"),
+    import_path5.default.join(__dirname, "../public/icon.ico"),
+    import_path5.default.join(__dirname, "../dist/icon.ico")
+  ];
+  for (const c of candidates) {
+    try {
+      if (import_fs5.default.existsSync(c)) return c;
+    } catch {
+    }
+  }
+  return import_path5.default.join(__dirname, "../public/icon.ico");
+}
 function createWindow() {
-  mainWindow = new import_electron3.BrowserWindow({
+  const iconPath = getAppIconPath();
+  mainWindow = new import_electron5.BrowserWindow({
     width: 1240,
     height: 840,
     minWidth: 960,
     minHeight: 650,
     title: "Qari Zafar Milk Shop",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: "#030712",
+    icon: iconPath,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: import_path3.default.join(__dirname, "preload.js"),
+      preload: import_path5.default.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
     }
   });
+  try {
+    mainWindow.setIcon(iconPath);
+  } catch {
+  }
   if (isDev) {
     const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
     mainWindow.loadURL(devUrl);
@@ -1996,13 +2979,37 @@ function createWindow() {
       mainWindow.webContents.openDevTools({ mode: "detach" });
     }
   } else {
-    mainWindow.loadFile(import_path3.default.join(__dirname, "../dist/index.html"));
+    mainWindow.loadFile(import_path5.default.join(__dirname, "../dist/index.html"));
   }
+  mainWindow.on("close", async (e) => {
+    if (isForceQuit) {
+      return;
+    }
+    e.preventDefault();
+    try {
+      const conn = await getConnectionStatus();
+      let scenario = "A";
+      if (!conn.isOnline) {
+        scenario = "B";
+      } else if (!conn.isBackendReachable) {
+        scenario = "C";
+      }
+      mainWindow?.webContents.send("app:show-close-backup-modal", {
+        scenario,
+        error: conn.error
+      });
+    } catch (err) {
+      mainWindow?.webContents.send("app:show-close-backup-modal", {
+        scenario: "B",
+        error: err.message || "Connectivity check failed"
+      });
+    }
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
 }
-import_electron3.app.whenReady().then(() => {
+import_electron5.app.whenReady().then(() => {
   console.log("[Main] App starting...");
   try {
     initDatabase();
@@ -2011,19 +3018,37 @@ import_electron3.app.whenReady().then(() => {
     console.error("[Main] Database initialization failed:", err);
   }
   registerIpcHandlers();
+  import_electron5.ipcMain.handle("app:confirmForceClose", () => {
+    isForceQuit = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.close();
+    }
+    import_electron5.app.quit();
+  });
+  import_electron5.ipcMain.handle("app:cancelClose", () => {
+    cancelActiveBackup();
+  });
+  import_electron5.ipcMain.handle("app:performCloseBackup", async () => {
+    return createAndUploadCloudBackup((stage, percent) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("backup:close-progress", { stage, percent });
+      }
+    }, "Application shutdown auto-backup");
+  });
   createWindow();
-  import_electron3.app.on("activate", () => {
-    if (import_electron3.BrowserWindow.getAllWindows().length === 0) {
+  import_electron5.app.on("activate", () => {
+    if (import_electron5.BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
-import_electron3.app.on("window-all-closed", () => {
+import_electron5.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    import_electron3.app.quit();
+    import_electron5.app.quit();
   }
 });
-import_electron3.app.on("before-quit", () => {
+import_electron5.app.on("before-quit", () => {
+  isForceQuit = true;
   closeDatabase();
 });
 //# sourceMappingURL=main.js.map

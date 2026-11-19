@@ -9,7 +9,8 @@
     "dev": "node build-electron.js && concurrently -k -p \"[{name}]\" -n \"Vite,Electron\" -c \"cyan.bold,blue.bold\" \"npm run dev:vite\" \"npm run dev:electron\"",
     "build:electron": "node build-electron.js",
     "build:renderer": "vite build",
-    "build": "npm run build:electron && npm run build:renderer",
+    "build": "node build-electron.js && vite build",
+    "dist:win": "node build-electron.js && vite build && electron-builder --win --x64",
     "preview": "vite preview"
   },
   "keywords": [
@@ -19,7 +20,7 @@
     "dairy",
     "management"
   ],
-  "author": "",
+  "author": "Qari Zafar Milk Shop",
   "license": "ISC",
   "dependencies": {
     "better-sqlite3": "^13.1.1",
@@ -37,11 +38,66 @@
     "concurrently": "^10.0.7",
     "cross-env": "^10.1.0",
     "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "postcss": "^8.5.32",
     "tailwindcss": "^3.4.19",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.qarizafar.milkshop",
+    "productName": "Qari Zafar Milk Shop",
+    "copyright": "Copyright © 2026 Qari Zafar Milk Shop",
+    "npmRebuild": false,
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node",
+      "**/better-sqlite3/prebuilds/**",
+      "**/better-sqlite3/lib/**"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "extraResources": [
+      { "from": "build/icon.ico", "to": "icon.ico" },
+      { "from": "public/logo.png", "to": "logo.png" },
+      { "from": "public/icon.ico", "to": "public/icon.ico" },
+      { "from": "public/logo.png", "to": "public/logo.png" }
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "public/**/*",
+      "build/**/*",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/node-addon-api/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Qari Zafar Milk Shop",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerLanguages": ["en_US"],
+      "language": "1033",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

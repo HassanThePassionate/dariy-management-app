@@ -14,6 +14,8 @@ import { ExpensesView } from './components/ExpensesView';
 import { GheeView } from './components/GheeView';
 import { ShopperView } from './components/ShopperView';
 import { SettingsView } from './components/SettingsView';
+import { WhatsAppBillingView } from './components/WhatsAppBillingView';
+import { CloseBackupModal } from './components/CloseBackupModal';
 import { PlaceholderPageView } from './components/PlaceholderPageView';
 import { AddMilkModal } from './components/AddMilkModal';
 import { AddCustomerModal } from './components/AddCustomerModal';
@@ -27,7 +29,28 @@ export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [activePage, setActivePage] = useState<PageId>('dashboard');
+  const [pageHistory, setPageHistory] = useState<PageId[]>(['dashboard']);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+
+  const navigateTo = (page: PageId) => {
+    if (page !== activePage) {
+      setPageHistory((prev) => [...prev, page]);
+      setActivePage(page);
+    }
+  };
+
+  const handleBack = () => {
+    if (pageHistory.length > 1) {
+      const nextHistory = [...pageHistory];
+      nextHistory.pop(); // remove current page
+      const prevPage = nextHistory[nextHistory.length - 1] || 'dashboard';
+      setPageHistory(nextHistory);
+      setActivePage(prevPage);
+    } else {
+      setActivePage('dashboard');
+      setPageHistory(['dashboard']);
+    }
+  };
 
   // Modals
   const [isAddMilkOpen, setIsAddMilkOpen] = useState<boolean>(false);
@@ -78,6 +101,7 @@ export const App: React.FC = () => {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setActivePage('dashboard');
+    setPageHistory(['dashboard']);
   };
 
   // Resolve current page title
@@ -124,7 +148,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100 flex flex-col font-sans select-none">
+    <div className="h-screen overflow-hidden bg-[#030712] text-slate-100 flex flex-col font-sans select-none">
       {isLoading && <Loader message={t.loading} />}
 
       {/* Top Header */}
@@ -133,13 +157,15 @@ export const App: React.FC = () => {
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         onLogout={handleLogout}
         isDbConnected={dbInfo?.isConnected ?? false}
+        canGoBack={activePage !== 'dashboard'}
+        onBack={handleBack}
       />
 
       {/* Sidebar Navigation Drawer */}
       <Sidebar
         isOpen={isSidebarOpen}
         activePage={activePage}
-        onSelectPage={(page) => setActivePage(page)}
+        onSelectPage={(page) => navigateTo(page)}
         onClose={() => setIsSidebarOpen(false)}
       />
 
@@ -148,8 +174,8 @@ export const App: React.FC = () => {
         <ErrorBoundary onReset={() => setActivePage('dashboard')}>
         {activePage === 'dashboard' && (
           <DashboardScreen
-            onOpenAddMilk={() => setActivePage('daily-sale')}
-            onNavigate={(page) => setActivePage(page)}
+            onOpenAddMilk={() => navigateTo('daily-sale')}
+            onNavigate={(page) => navigateTo(page as PageId)}
             dbInfo={dbInfo}
           />
         )}
@@ -172,7 +198,7 @@ export const App: React.FC = () => {
 
         {activePage === 'suppliers' && <SuppliersView />}
 
-        {activePage === 'daily-stock' && <DailyStockView onNavigate={(page) => setActivePage(page as PageId)} />}
+        {activePage === 'daily-stock' && <DailyStockView onNavigate={(page) => navigateTo(page as PageId)} />}
 
         {activePage === 'all-record' && <AllRecordsView />}
 
@@ -183,6 +209,8 @@ export const App: React.FC = () => {
         {activePage === 'ghee' && <GheeView />}
 
         {activePage === 'shopper' && <ShopperView />}
+
+        {activePage === 'monthly-bills' && <WhatsAppBillingView />}
 
         {activePage === 'settings' && <SettingsView dbInfo={dbInfo} />}
 
@@ -196,6 +224,7 @@ export const App: React.FC = () => {
           activePage !== 'fleet-expenses' &&
           activePage !== 'ghee' &&
           activePage !== 'shopper' &&
+          activePage !== 'monthly-bills' &&
           activePage !== 'settings' && (
             <PlaceholderPageView pageId={activePage} dbInfo={dbInfo} />
           )}
@@ -226,6 +255,9 @@ export const App: React.FC = () => {
           setCustomerRefreshKey((k) => k + 1);
         }}
       />
+
+      {/* Cloud Auto-Backup on Close Dialog */}
+      <CloseBackupModal />
     </div>
   );
 };

@@ -85,7 +85,6 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
       const s = await window.electronAPI.getBillSettings();
       if (s) setBillSettings(s);
     } catch (_) {}
-    setVersion((v) => v + 1);
   }, [month]);
 
   // Real-time local entries state for both Morning and Evening
@@ -123,6 +122,13 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Auto-refresh sheet when other parts of the app change data
+  useEffect(() => {
+    const handleDataChange = () => load();
+    window.addEventListener('dairy-data-changed', handleDataChange);
+    return () => window.removeEventListener('dairy-data-changed', handleDataChange);
   }, [load]);
 
   const paidMap = useMemo(() => Object.fromEntries((sheet?.paid || []).map((p) => [p.supplier_id, p.amount])), [sheet]);
@@ -243,6 +249,7 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
           }
           delete timers.current[key];
           onUpdate?.();
+          window.dispatchEvent(new Event('dairy-data-changed'));
         } catch (err) {
           console.error('Failed to save supplier cell:', err);
         }
@@ -288,6 +295,7 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
         shift: cellShift,
       });
       onUpdate?.();
+      window.dispatchEvent(new Event('dairy-data-changed'));
     }
   };
 
@@ -297,14 +305,24 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
     await window.electronAPI?.setSupplierPrevious({ supplierId, month, amount });
     load();
     onUpdate?.();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const delMonth = async (id: number, name: string) => {
     const shiftLabel = activeShift === 'Morning' ? (ur ? 'صبح' : 'Morning') : (ur ? 'شام' : 'Evening');
     if (!confirm(ur ? `${name} کا ${shiftLabel} کا پورا مہینہ حذف کریں؟` : `Delete the whole ${shiftLabel} month ${month} for ${name}?`)) return;
     await window.electronAPI?.deleteSupplierMonth({ supplierId: id, month, shift: activeShift });
-    load();
+    await load();
     onUpdate?.();
+    window.dispatchEvent(new Event('dairy-data-changed'));
+  };
+
+  const delSupplier = async (id: number, name: string) => {
+    if (!confirm(ur ? `کیا آپ ${name} اور اس کا تمام ریکارڈ (دودھ اور ادائیگیاں) مستقل طور پر حذف کرنا چاہتے ہیں؟` : `Delete supplier ${name} and all their milk & payment records permanently?`)) return;
+    await window.electronAPI?.deleteSupplier(id);
+    await load();
+    onUpdate?.();
+    window.dispatchEvent(new Event('dairy-data-changed'));
   };
 
   const shiftMonth = async (d: number) => {
@@ -525,7 +543,7 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
                       return (
                         <td key={d} className={`border-r border-slate-100 p-0 ${d === todayDay ? 'bg-blue-50/40' : ''}`}>
                           <input
-                            key={`${s.id}-${d}-${activeShift}-${version}`}
+                            key={`${s.id}-${d}-${activeShift}`}
                             data-s={s.id}
                             data-d={d}
                             type="text"
@@ -608,8 +626,8 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
                           <span>Print</span>
                         </button>
                         <button
-                          onClick={() => delMonth(s.id, s.name)}
-                          title={ur ? 'حذف کریں' : 'Delete'}
+                          onClick={() => delSupplier(s.id, s.name)}
+                          title={ur ? 'سپلائر اور تمام ریکارڈ حذف کریں' : 'Delete Supplier & All Records'}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer transition-colors"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
