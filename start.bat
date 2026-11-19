@@ -13,6 +13,7 @@ echo   [+] System Settings, Bill Print & Real-Time DB Backup     : OK
 echo   [+] Monthly Khatta Grid (31 Days + Scroll + Summary After): OK
 echo   [+] Daily Quick Cash Sales (Presets, Edit/Delete, Simple) : OK
 echo   [+] All Records (Bill Slip Print & WhatsApp Integration)  : OK
+echo   [+] Cloud Backend & Neon DB Backup (start-backend.bat)   : READY
 echo ================================================================
 echo.
 echo [1/3] Cleaning up old processes on port 5173 and electron...

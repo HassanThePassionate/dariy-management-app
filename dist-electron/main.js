@@ -933,15 +933,35 @@ async function restoreCloudBackup(backupId, onProgress) {
 var import_electron3 = require("electron");
 var import_fs3 = __toESM(require("fs"));
 var import_path3 = __toESM(require("path"));
+function getLogoDataUri() {
+  try {
+    const candidates = [
+      import_path3.default.join(import_electron3.app.getAppPath(), "public", "logo.png"),
+      import_path3.default.join(__dirname, "../../public/logo.png"),
+      import_path3.default.join(__dirname, "../renderer/assets/logo.png"),
+      import_path3.default.join(process.cwd(), "public", "logo.png"),
+      import_path3.default.join(process.cwd(), "src", "renderer", "src", "assets", "logo.png")
+    ];
+    for (const p of candidates) {
+      if (import_fs3.default.existsSync(p)) {
+        const buf = import_fs3.default.readFileSync(p);
+        return `data:image/png;base64,${buf.toString("base64")}`;
+      }
+    }
+  } catch {
+  }
+  return "";
+}
 function buildBillHtml(data) {
   const shopTitle = data.shopTitle || "\u0642\u0627\u0631\u06CC \u0638\u0641\u0631 \u0627\u0642\u0628\u0627\u0644 \u0645\u0644\u06A9 \u0634\u0627\u067E";
   const ownerName = data.ownerName || "\u062D\u0627\u0641\u0638 \u0645\u0635\u0639\u0628 \u0638\u0641\u0631";
   const shopPhone = data.shopPhone || "+92 321 0001168";
-  const bankName = data.bankName || "\u0645\u06CC\u0632\u0627\u0646 \u0628\u06CC\u0646\u06A9";
-  const accountTitle = data.accountTitle || "\u062D\u0627\u0641\u0638 \u0645\u0635\u0639\u0628 \u0638\u0641\u0631";
-  const accountNumber = data.accountNumber || "02090111954760";
+  const bankName = data.bankName || "faysalbank";
+  const accountTitle = data.accountTitle || "Hafiz Musab Zafar";
+  const accountNumber = data.accountNumber || "0210-1234567890";
   const money = (n) => Math.round(n || 0).toLocaleString("en-US");
   const qty = (n) => Number.isInteger(n) ? String(n) : Number(n).toFixed(2);
+  const logoDataUri = getLogoDataUri();
   return `<!DOCTYPE html>
 <html lang="ur" dir="rtl">
 <head>
@@ -949,102 +969,144 @@ function buildBillHtml(data) {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background-color: #020b24;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      color: #FFFFFF;
+      background-color: #101d35;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Nastaliq Urdu", sans-serif;
+      color: #f4f3ed;
       display: flex;
       justify-content: center;
       align-items: center;
       width: 440px;
-      padding: 12px;
+      padding: 10px;
     }
     .card {
-      width: 416px;
-      background: radial-gradient(circle at 50% 15%, #081a4a 0%, #020b24 70%);
-      border: 2px solid #00d2ff;
-      border-radius: 24px;
-      box-shadow: 0 0 25px rgba(0, 210, 255, 0.35);
-      padding: 18px 16px 20px;
+      width: 420px;
+      background: linear-gradient(180deg, #101d35 0%, #0c1628 100%);
+      border: 2px solid rgba(233, 184, 63, 0.45);
+      border-radius: 26px;
+      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.5), 0 0 1px rgba(233, 184, 63, 0.35);
+      padding: 18px 16px 18px;
       text-align: right;
     }
-    .header { text-align: center; margin-bottom: 8px; }
-    .shop-title { font-size: 24px; font-weight: 900; color: #FFFFFF; margin-bottom: 4px; }
-    .owner-badge {
+    .header { margin-bottom: 8px; }
+    .header-flex { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .logo-badge {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      background: rgba(25, 43, 72, 0.9);
+      border: 1px solid rgba(233, 184, 63, 0.5);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+    }
+    .logo-img { max-height: 44px; max-width: 44px; object-fit: contain; }
+    .shop-title { font-size: 24px; font-weight: 900; color: #f4f3ed; line-height: 1.2; }
+    .owner-pill {
       display: inline-block;
       padding: 2px 14px;
-      background: rgba(11, 20, 55, 0.8);
-      border: 1px solid rgba(0, 210, 255, 0.8);
+      background: #192b48;
+      border: 1px solid #e9b83f;
       border-radius: 9999px;
-      font-size: 12px;
-      color: #a5f3fc;
+      font-size: 11px;
+      color: #e9b83f;
       font-weight: bold;
+      margin-top: 4px;
     }
     .box {
       margin-top: 8px;
       padding: 8px 12px;
-      background: #06143c;
-      border: 1px solid rgba(0, 210, 255, 0.8);
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 150, 255, 0.2);
+      background: #192b48;
+      border: 1.5px solid rgba(57, 201, 216, 0.4);
+      border-radius: 16px;
     }
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .label { font-size: 11px; color: #cbd5e1; }
-    .value { font-size: 15px; font-weight: 900; color: #FFFFFF; }
-    .highlight { color: #00d2ff; }
-    .amber { color: #fbbf24; }
+    .label { font-size: 11px; color: #b7c1d0; }
+    .value { font-size: 16px; font-weight: 900; color: #f4f3ed; font-family: monospace; }
+    .highlight { color: #39c9d8; }
+    .gold { color: #e9b83f; }
     .payable-box {
       margin-top: 10px;
       padding: 12px 14px;
-      background: linear-gradient(90deg, rgba(30, 58, 138, 0.9), #072559, rgba(30, 58, 138, 0.9));
-      border: 2px solid #00d2ff;
-      border-radius: 16px;
-      box-shadow: 0 0 20px rgba(0, 210, 255, 0.5);
+      background: linear-gradient(135deg, #1e3357 0%, #192b48 100%);
+      border: 2px solid #e9b83f;
+      border-radius: 18px;
+      box-shadow: 0 4px 20px rgba(233, 184, 63, 0.22);
     }
-    .payable-amount { font-size: 26px; font-weight: 900; color: #FFFFFF; }
+    .payable-amount { font-size: 28px; font-weight: 900; color: #f4f3ed; font-family: monospace; }
     .warning {
       margin-top: 8px;
       padding: 8px 10px;
-      background: #061a47;
-      border: 1px solid rgba(0, 210, 255, 0.7);
-      border-radius: 12px;
+      background: #14233d;
+      border: 1.5px solid rgba(57, 201, 216, 0.35);
+      border-radius: 16px;
       font-size: 11px;
       font-weight: bold;
-      color: #FFFFFF;
+      color: #f4f3ed;
       text-align: center;
     }
     .bank-box {
       margin-top: 8px;
       padding: 8px 12px;
-      background: #06143c;
-      border: 1px solid rgba(0, 210, 255, 0.8);
-      border-radius: 12px;
+      background: #192b48;
+      border: 1.5px solid rgba(57, 201, 216, 0.4);
+      border-radius: 16px;
       font-size: 11px;
+    }
+    .note-box {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #13223b;
+      border: 1px solid rgba(57, 201, 216, 0.3);
+      border-radius: 16px;
+      font-size: 10.5px;
+      color: #b7c1d0;
+      line-height: 1.5;
     }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="header">
-      <div class="shop-title">${shopTitle}</div>
-      <div class="owner-badge">${ownerName}</div>
+      <div class="header-flex">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          ${logoDataUri ? `
+          <div class="logo-badge">
+            <img class="logo-img" src="${logoDataUri}" alt="Logo" />
+          </div>` : ""}
+          <div style="width: 32px; height: 44px; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 64 64" style="width: 32px; height: 40px;" fill="none">
+              <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#39c9d8" stroke-width="1.5" />
+              <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fill-opacity="0.95" stroke="#39c9d8" stroke-width="2" />
+              <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#39c9d8" fill-opacity="0.35" />
+              <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fill-opacity="0.9" stroke="#39c9d8" stroke-width="1.5" />
+            </svg>
+          </div>
+        </div>
+        <div style="text-align: right; flex: 1;">
+          <div class="shop-title">${shopTitle}</div>
+          <div><span class="owner-pill">${ownerName}</span></div>
+        </div>
+      </div>
     </div>
 
     <!-- Phone -->
     <div class="box flex-between" dir="ltr">
       <span class="value highlight" style="font-family: monospace;">${shopPhone}</span>
-      <span class="label" style="font-weight: bold;">\u0645\u0648\u0628\u0627\u0626\u0644 \u0646\u0645\u0628\u0631:</span>
+      <span class="label" style="font-weight: bold; color: #b7c1d0;">\u0645\u0648\u0628\u0627\u0626\u0644 \u0646\u0645\u0628\u0631:</span>
     </div>
 
     <!-- Bill No & Customer -->
     <div class="box grid-2">
-      <div style="border-left: 1px solid rgba(0,210,255,0.3); padding-left: 8px;">
-        <div class="label">\u0628\u0644 \u0646\u0645\u0628\u0631: <strong class="value">${data.billNo || data.customerId}</strong></div>
+      <div style="border-left: 1px solid rgba(57, 201, 216, 0.3); padding-left: 8px;">
+        <div class="label">\u0628\u0644 \u0646\u0645\u0628\u0631: <strong class="value" style="color: #f4f3ed;">${data.billNo || data.customerId}</strong></div>
         <div class="label highlight">${data.monthLabel}</div>
       </div>
       <div>
         <div class="label">\u0628\u0644 \u0628\u0646\u0627\u0645:</div>
-        <div class="value" style="font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${data.customerName}</div>
+        <div class="value" style="font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${data.customerName}</div>
       </div>
     </div>
 
@@ -1052,44 +1114,57 @@ function buildBillHtml(data) {
     <div class="grid-2" style="margin-top: 8px;">
       <div class="box flex-between">
         <span class="label">\u0641\u06CC \u0644\u06CC\u0679\u0631 \u0631\u06CC\u0679:</span>
-        <span class="value">${data.rate} \u0631\u0648\u067E\u06D2</span>
+        <span class="value">${data.rate} <span style="font-size: 12px; color: #39c9d8;">\u0631\u0648\u067E\u06D2</span></span>
       </div>
       <div class="box flex-between">
         <span class="label">\u06A9\u0644 \u062F\u0648\u062F\u06BE:</span>
-        <span class="value highlight">${qty(data.liters)} \u0644\u06CC\u0679\u0631</span>
+        <span class="value highlight">${qty(data.liters)} <span style="font-size: 12px; color: #f4f3ed;">\u0644\u06CC\u0679\u0631</span></span>
       </div>
     </div>
 
     <!-- Arrears & Milk Amount -->
     <div class="box grid-2">
-      <div style="border-left: 1px solid rgba(0,210,255,0.3); padding-left: 8px;">
+      <div style="border-left: 1px solid rgba(57, 201, 216, 0.3); padding-left: 8px;">
         <div class="label">\u0633\u0627\u0628\u0642\u06C1 \u0631\u0642\u0645:</div>
-        <span class="value amber">${money(data.carry)} \u0631\u0648\u067E\u06D2</span>
+        <span class="value gold">${money(data.carry)} <span style="font-size: 12px; color: #b7c1d0;">\u0631\u0648\u067E\u06D2</span></span>
       </div>
       <div>
         <div class="label">\u06A9\u0644 \u0631\u0642\u0645 \u062F\u0648\u062F\u06BE:</div>
-        <span class="value">${money(data.billAmount)} \u0631\u0648\u067E\u06D2</span>
+        <span class="value">${money(data.billAmount)} <span style="font-size: 12px; color: #39c9d8;">\u0631\u0648\u067E\u06D2</span></span>
       </div>
     </div>
 
-    <!-- Total Payable -->
+    <!-- Total Payable (\u06A9\u0644 \u0628\u0644 \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC) -->
     <div class="payable-box flex-between">
-      <div style="font-size: 13px; font-weight: 900; color: #a5f3fc;">\u06A9\u0644 \u0628\u0644 \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC:</div>
-      <div class="payable-amount">${money(data.payable)} <span style="font-size: 16px; color: #00d2ff;">\u0631\u0648\u067E\u06D2</span></div>
+      <div style="font-size: 13px; font-weight: 900; color: #e9b83f;">\u06A9\u0644 \u0628\u0644 \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC:</div>
+      <div class="payable-amount">${money(data.payable)} <span style="font-size: 18px; color: #e9b83f;">\u0631\u0648\u067E\u06D2</span></div>
     </div>
 
     <!-- Warning -->
     <div class="warning">
-      \u0628\u0644 \u06C1\u0631 \u0645\u0627\u06C1 \u06A9\u06CC <span style="color: #00d2ff;">5 \u062A\u0627\u0631\u06CC\u062E</span> \u062A\u06A9 \u0627\u062F\u0627 \u06A9\u0631\u06CC\u06BA\u060C \u0628\u0635\u0648\u0631\u062A \u062F\u06CC\u06AF\u0631 \u062F\u0648\u062F\u06BE \u06A9\u06CC \u0633\u067E\u0644\u0627\u0626\u06CC \u0628\u0646\u062F \u06A9\u0631 \u062F\u06CC \u062C\u0627\u0626\u06D2 \u06AF\u06CC\u06D4
+      \u0628\u0644 \u06C1\u0631 \u0645\u0627\u06C1 \u06A9\u06CC <span style="color: #39c9d8; font-weight: 900;">5 \u062A\u0627\u0631\u06CC\u062E</span> \u062A\u06A9 \u0627\u062F\u0627 \u06A9\u0631\u06CC\u06BA\u060C \u0628\u0635\u0648\u0631\u062A \u062F\u06CC\u06AF\u0631 \u062F\u0648\u062F\u06BE \u06A9\u06CC \u0633\u067E\u0644\u0627\u0626\u06CC \u0628\u0646\u062F \u06A9\u0631 \u062F\u06CC \u062C\u0627\u0626\u06D2 \u06AF\u06CC\u06D4
     </div>
 
     <!-- Bank Details -->
     <div class="bank-box flex-between" dir="ltr">
-      <div style="font-weight: bold; color: #00d2ff;">${bankName}</div>
+      <div style="font-weight: bold; color: #39c9d8;">${bankName}</div>
       <div style="text-align: right;">
-        <div style="color: #00d2ff; font-family: monospace; font-weight: bold;">A/C: ${accountNumber}</div>
-        <div style="color: #cbd5e1; font-size: 10px;">Title: ${accountTitle}</div>
+        <div style="color: #39c9d8; font-family: monospace; font-weight: bold; font-size: 13px;">A/C: ${accountNumber}</div>
+        <div style="color: #b7c1d0; font-size: 10px;">Title: ${accountTitle}</div>
       </div>
+    </div>
+
+    <!-- Online Note -->
+    <div class="note-box">
+      \u0622\u0646 \u0644\u0627\u0626\u0646 \u0631\u0642\u0645 \u06A9\u06CC \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC \u06A9\u06D2 \u0644\u06CC\u06D2 \u0628\u06CC\u0646\u06A9 \u0627\u06A9\u0627\u0624\u0646\u0679 \u0645\u06CC\u06BA \u0631\u0642\u0645 \u0679\u0631\u0627\u0646\u0633\u0641\u0631 \u06A9\u0631\u06CC\u06BA\u06D4 \u0627\u062F\u0627\u0626\u06CC\u06AF\u06CC \u06A9\u06CC \u0631\u0633\u06CC\u062F \u0627\u0633 \u0646\u0645\u0628\u0631 <span style="color: #39c9d8; font-weight: bold; font-family: monospace;">${shopPhone}</span> \u067E\u0631 \u0648\u0627\u0679\u0633 \u0627\u06CC\u067E \u06A9\u0631\u06CC\u06BA\u06D4
+    </div>
+
+    <!-- Waves -->
+    <div style="margin-top: 10px; display: flex; justify-content: center; opacity: 0.9;">
+      <svg viewBox="0 0 300 24" style="width: 100%; height: 22px; color: #39c9d8;" fill="currentColor">
+        <path d="M0 12 Q 25 24 50 12 T 100 12 T 150 12 T 200 12 T 250 12 T 300 12 V 24 H 0 Z" fill="#F4F3ED" fill-opacity="0.75" />
+        <path d="M0 16 Q 25 6 50 16 T 100 16 T 150 16 T 200 16 T 250 16 T 300 16 V 24 H 0 Z" fill="#39c9d8" fill-opacity="0.35" />
+      </svg>
     </div>
   </div>
 </body>

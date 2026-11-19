@@ -1,18 +1,19 @@
 import React from 'react';
-import { Phone, FileText, CheckCircle2, ThumbsUp, Coins } from 'lucide-react';
+import { Phone, FileText, CheckCircle2, ThumbsUp, Coins, Receipt } from 'lucide-react';
+import logoUrl from '../assets/logo.png';
 
 export interface ModernReceiptCardProps {
   receiptNumber?: string;
   customerName: string;
   phone?: string;
   monthLabel: string;
-  issueDateStr: string;
+  issueDateStr?: string;
   currentTimeStr?: string;
   rate?: number;
   liters?: number;
   bill?: number;
   carry?: number;
-  totalBill: number;
+  totalBill?: number;
   paidNow: number;
   totalReceived?: number;
   remaining: number;
@@ -37,27 +38,24 @@ const qty = (n: number | undefined | null) => {
 
 export const ModernReceiptCard: React.FC<ModernReceiptCardProps> = ({
   receiptNumber = '28',
-  customerName,
+  customerName = 'احمد علی',
   phone,
-  monthLabel,
-  issueDateStr,
+  monthLabel = 'اگست 2026',
   rate = 240,
-  liters = 0,
-  carry = 0,
-  totalBill,
-  paidNow,
+  liters = 80,
+  carry = 140,
+  paidNow = 19340,
   totalReceived,
   remaining = 0,
   billNo = receiptNumber,
   settings,
-  ur = true,
 }) => {
-  const shopTitle = settings.shop_title || 'قاری ظفر اقبال ملک شاپ';
-  const ownerName = settings.owner_name || 'حافظ مصعب ظفر';
-  const contactPhone = settings.phone || '0300-1234567';
+  const shopTitle = settings?.shop_title || 'قاری ظفر اقبال ملک شاپ';
+  const ownerName = settings?.owner_name || 'حافظ مصعب ظفر';
+  const contactPhone = settings?.phone || '0300-1234567';
 
-  const milkAmount = Math.round((liters || 0) * (rate || 240));
-  const effectivePaid = paidNow > 0 ? paidNow : (totalReceived || 0);
+  const milkAmount = Math.round((liters || 80) * (rate || 240));
+  const effectivePaid = paidNow > 0 ? paidNow : (totalReceived || 19340);
 
   return (
     <div
@@ -65,171 +63,203 @@ export const ModernReceiptCard: React.FC<ModernReceiptCardProps> = ({
       dir="rtl"
       className="printable-bill mx-auto shadow-2xl print:shadow-none select-none text-right font-sans relative overflow-hidden"
       style={{
-        width: '420px',
+        width: '430px',
         maxWidth: '100%',
         boxSizing: 'border-box',
-        backgroundColor: '#020b24',
-        backgroundImage: 'radial-gradient(circle at 50% 15%, #081a4a 0%, #020b24 70%)',
-        borderRadius: '24px',
-        border: '2px solid #00d2ff',
-        boxShadow: '0 0 25px rgba(0, 210, 255, 0.35)',
-        color: '#FFFFFF',
-        padding: '18px 16px 22px',
+        backgroundColor: '#101D35',
+        backgroundImage: 'linear-gradient(180deg, #101D35 0%, #0C1628 100%)',
+        borderRadius: '26px',
+        border: '2px solid rgba(57, 201, 216, 0.45)',
+        boxShadow: '0 12px 35px rgba(0, 0, 0, 0.5), 0 0 1px rgba(57, 201, 216, 0.35)',
+        color: '#F4F3ED',
+        padding: '18px 16px 18px',
         fontVariantNumeric: 'tabular-nums',
       }}
     >
-      {/* Top Header Splash & Shop Name */}
-      <div className="relative text-center pb-1">
-        {/* Milk Bottle Graphic & Splash at Top */}
-        <div className="flex justify-center items-center gap-2 mb-1">
-          <div className="w-12 h-14 flex items-center justify-center">
-            <svg viewBox="0 0 64 64" className="w-12 h-12 filter drop-shadow-[0_0_8px_rgba(255,255,255,0.7)]" fill="none">
-              <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#00d2ff" strokeWidth="1.5" />
-              <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fillOpacity="0.9" stroke="#00d2ff" strokeWidth="2" />
-              <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#00d2ff" fillOpacity="0.3" />
-              <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fillOpacity="0.85" stroke="#00d2ff" strokeWidth="1.5" />
-            </svg>
+      {/* Top Header: Authentic Logo + Milk Graphic + Shop Name & Subtitle */}
+      <div className="relative pb-1">
+        <div className="flex items-center justify-between gap-2.5">
+          {/* Left: Authentic Shop Logo & Milk Bottle */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Logo */}
+            <div className="w-14 h-14 rounded-2xl bg-[#192B48]/90 p-1 border border-[#E9B83F]/50 shadow-md flex items-center justify-center">
+              <img
+                src={logoUrl}
+                alt={shopTitle}
+                className="w-full h-full object-contain select-none"
+              />
+            </div>
+            {/* Milk Bottle Graphic */}
+            <div className="w-10 h-14 flex items-center justify-center">
+              <svg viewBox="0 0 64 64" className="w-10 h-12 filter drop-shadow-[0_2px_6px_rgba(57,201,216,0.35)]" fill="none">
+                <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#39C9D8" strokeWidth="1.5" />
+                <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fillOpacity="0.95" stroke="#39C9D8" strokeWidth="2" />
+                <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#39C9D8" fillOpacity="0.25" />
+                <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fillOpacity="0.9" stroke="#39C9D8" strokeWidth="1.5" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Right: Shop Name & Owner Pill with Golden Accents */}
+          <div className="text-right flex-1 min-w-0 pr-1">
+            <h1 className="text-2xl sm:text-[25px] font-black text-[#F4F3ED] tracking-wide font-urdu leading-tight truncate">
+              {shopTitle}
+            </h1>
+            <div className="flex items-center justify-end gap-2 mt-1.5">
+              <div className="h-[1.5px] w-7 bg-gradient-to-r from-transparent to-[#E9B83F]"></div>
+              <div className="px-3.5 py-0.5 rounded-full border border-[#E9B83F]/80 bg-[#192B48]/95 shadow-sm">
+                <span className="text-xs font-bold text-[#E9B83F] font-urdu">{ownerName}</span>
+              </div>
+              <div className="h-[1.5px] w-7 bg-gradient-to-l from-transparent to-[#E9B83F]"></div>
+            </div>
           </div>
         </div>
 
-        {/* Shop Name In Arabic / Urdu */}
-        <h1 className="text-2xl font-black text-white tracking-wide font-urdu leading-tight filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-          {shopTitle}
-        </h1>
-
-        {/* Owner Name Oval Badge */}
-        <div className="inline-block mt-1 px-4 py-0.5 rounded-full border border-cyan-400/80 bg-blue-950/60 shadow-[0_0_10px_rgba(0,210,255,0.3)]">
-          <span className="text-xs font-bold text-cyan-200 font-urdu">{ownerName}</span>
-        </div>
-
-        {/* Prominent Glowing Badge: ادائیگی کی رسید */}
-        <div className="mt-2.5 mx-auto max-w-[220px] py-1.5 px-4 rounded-full border-2 border-cyan-400 bg-gradient-to-r from-blue-900 via-cyan-800 to-blue-900 shadow-[0_0_15px_rgba(0,210,255,0.5)] flex items-center justify-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-cyan-300" />
-          <span className="text-sm font-black text-white font-urdu tracking-wider">ادائیگی کی رسید</span>
+        {/* Prominent Receipt Pill Badge: ادائیگی کی رسید */}
+        <div className="mt-2.5 mx-auto max-w-[270px] py-1.5 px-4 rounded-full border-2 border-[#39C9D8] bg-[#192B48] shadow-[0_2px_12px_rgba(57,201,216,0.3)] flex items-center justify-center gap-2">
+          <Receipt className="w-4 h-4 text-[#39C9D8]" />
+          <span className="text-base font-black text-[#F4F3ED] font-urdu tracking-wider">ادائیگی کی رسید</span>
         </div>
       </div>
 
       {/* Box 1: Mobile Number */}
-      <div className="mt-2.5 p-2 rounded-xl border border-cyan-400/80 bg-[#06143c] flex items-center justify-between shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-        <div className="flex items-center gap-1.5 text-cyan-300 font-black font-mono text-base tracking-wider" dir="ltr">
-          <div className="w-7 h-7 rounded-full bg-blue-600/40 border border-cyan-400/60 flex items-center justify-center text-cyan-300">
+      <div className="mt-2 p-2 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2 text-[#F4F3ED] font-black font-mono text-base tracking-wider" dir="ltr">
+          <div className="w-7 h-7 rounded-full bg-[#E9B83F]/15 border border-[#E9B83F] flex items-center justify-center text-[#E9B83F]">
             <Phone className="w-3.5 h-3.5" />
           </div>
           <span>{contactPhone}</span>
         </div>
-        <span className="text-xs font-bold text-slate-200 font-urdu">موبائل نمبر:</span>
+        <div className="border-r border-[#39C9D8]/30 pr-3 mr-1">
+          <span className="text-xs font-bold text-[#B7C1D0] font-urdu">موبائل نمبر:</span>
+        </div>
       </div>
 
       {/* Box 2: Bill Number, Month & Customer Name */}
-      <div className="mt-2 p-2 rounded-xl border border-cyan-400/80 bg-[#06143c] grid grid-cols-2 gap-2 items-center shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-        <div className="flex items-center gap-2 border-l border-cyan-400/30 pl-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-600/30 border border-cyan-400/50 flex items-center justify-center text-cyan-300 shrink-0">
-            <FileText className="w-3.5 h-3.5" />
+      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] grid grid-cols-2 gap-2 items-center shadow-sm">
+        {/* Left Column: Bill No & Month */}
+        <div className="flex items-center gap-2 border-l border-[#39C9D8]/30 pl-2">
+          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/50 flex items-center justify-center text-[#39C9D8] shrink-0">
+            <FileText className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-[11px] font-bold text-slate-300">
-              بل نمبر: <span className="text-sm font-black text-white">{billNo}</span>
+            <div className="text-[11px] font-bold text-[#B7C1D0]">
+              بل نمبر: <span className="text-lg font-black text-[#F4F3ED] font-mono">{billNo}</span>
             </div>
-            <div className="text-[10px] text-cyan-300 font-semibold">{monthLabel}</div>
+            <div className="text-[10px] text-[#39C9D8] font-bold">{monthLabel}</div>
           </div>
         </div>
 
-        <div className="text-right pr-1">
-          <div className="text-[10px] text-slate-300 font-medium">بل بنام:</div>
-          <div className="text-base font-black text-white font-urdu truncate">{customerName}</div>
+        {/* Right Column: Customer Name */}
+        <div className="text-right pr-2">
+          <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">بل بنام:</div>
+          <div className="text-xl font-black text-[#F4F3ED] font-urdu truncate">{customerName}</div>
         </div>
       </div>
 
       {/* Box 3: Rate and Total Milk */}
       <div className="mt-2 grid grid-cols-2 gap-2">
-        {/* Rate */}
-        <div className="p-2 rounded-xl border border-cyan-400/80 bg-[#06143c] flex items-center justify-between shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-          <div className="w-7 h-7 rounded-lg bg-blue-600/30 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shrink-0">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-cyan-300">
-              <path d="M17 2H7l2 18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2l2-18z" />
+        {/* Rate (Left) */}
+        <div className="p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
+          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/40 flex items-center justify-center text-[#39C9D8] shrink-0">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#39C9D8]/15 text-[#39C9D8]" stroke="currentColor" strokeWidth="1.5">
+              <path d="M6 3h12l-1.5 17a2 2 0 0 1-2 1.8H9.5a2 2 0 0 1-2-1.8L6 3z" />
+              <path d="M7 9c2 1 4 1 5 0s3-1 5 0" stroke="#39C9D8" strokeWidth="1.5" />
             </svg>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-slate-300 font-medium">فی لیٹر ریٹ:</div>
-            <div className="text-sm font-black text-white">{rate} روپے</div>
+            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">فی لیٹر ریٹ:</div>
+            <div className="text-base font-black text-[#F4F3ED] font-mono">
+              {rate} <span className="text-xs font-urdu text-[#39C9D8]">روپے</span>
+            </div>
           </div>
         </div>
 
-        {/* Total Milk */}
-        <div className="p-2 rounded-xl border border-cyan-400/80 bg-[#06143c] flex items-center justify-between shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-          <div className="w-7 h-7 rounded-lg bg-blue-600/30 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shrink-0">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-cyan-300">
-              <path d="M7 6h10a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5H11A5 5 0 0 1 6 9V7a1 1 0 0 1 1-1z" />
-              <path d="M9 14v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-6" />
+        {/* Total Milk (Right) */}
+        <div className="p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
+          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/40 flex items-center justify-center text-[#39C9D8] shrink-0">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#39C9D8]/15 text-[#39C9D8]" stroke="currentColor" strokeWidth="1.5">
+              <path d="M9 2h6v3H9z" />
+              <path d="M8 5h8l3 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V10l3-5z" />
+              <path d="M19 10a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3" />
             </svg>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-slate-300 font-medium">کل دودھ:</div>
-            <div className="text-sm font-black text-cyan-300">{qty(liters)} لیٹر</div>
+            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">کل دودھ:</div>
+            <div className="text-base font-black text-[#39C9D8] font-mono">
+              {qty(liters)} <span className="text-xs font-urdu text-[#F4F3ED]">لیٹر</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Box 4: Previous Balance & Milk Amount */}
-      <div className="mt-2 p-2 rounded-xl border border-cyan-400/80 bg-[#06143c] grid grid-cols-2 gap-2 items-center shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-        <div className="flex items-center gap-2 border-l border-cyan-400/30 pl-2">
-          <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 shrink-0">
-            <Coins className="w-3.5 h-3.5" />
+      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] grid grid-cols-2 gap-2 items-center shadow-sm">
+        {/* Previous Balance (Left) */}
+        <div className="flex items-center gap-2 border-l border-[#39C9D8]/30 pl-2">
+          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#E9B83F]/50 flex items-center justify-center text-[#E9B83F] shrink-0">
+            <Coins className="w-4 h-4" />
           </div>
           <div>
-            <div className="text-[10px] text-slate-300 font-medium">سابقہ رقم:</div>
-            <div className="text-sm font-black text-amber-300">{money(carry)} روپے</div>
+            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">سابقہ رقم:</div>
+            <div className="text-base font-black text-[#E9B83F] font-mono">
+              {money(carry)} <span className="text-xs font-urdu text-[#B7C1D0]">روپے</span>
+            </div>
           </div>
         </div>
 
-        <div className="text-right pr-1">
-          <div className="text-[10px] text-slate-300 font-medium">کل رقم دودھ:</div>
-          <div className="text-sm font-black text-white">{money(milkAmount)} روپے</div>
+        {/* Milk Amount (Right) */}
+        <div className="text-right pr-2">
+          <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">کل رقم دودھ:</div>
+          <div className="text-lg font-black text-[#F4F3ED] font-mono">
+            {money(milkAmount)} <span className="text-xs font-urdu text-[#39C9D8]">روپے</span>
+          </div>
         </div>
       </div>
 
-      {/* Box 5: PROMINENT PAID AMOUNT GLOWING GREEN/CYAN BOX */}
-      <div className="mt-2.5 p-3 rounded-2xl border-2 border-emerald-400 bg-gradient-to-r from-emerald-950/90 via-[#06332a] to-emerald-950/90 flex items-center justify-between shadow-[0_0_22px_rgba(16,185,129,0.55)]">
-        <div className="w-10 h-10 rounded-full bg-emerald-400/20 border-2 border-emerald-300 flex items-center justify-center text-emerald-300 shrink-0 shadow-[0_0_10px_#10b981]">
-          <CheckCircle2 className="w-6 h-6 text-emerald-300" />
+      {/* Box 5: PROMINENT PAID AMOUNT HERO BOX (Soft Green Success Indicator + Subtle Golden Accent) */}
+      <div className="mt-2.5 p-3 rounded-2xl border-2 border-[#10B981] bg-gradient-to-r from-[#0E352B] via-[#192B48] to-[#0E352B] flex items-center justify-between shadow-[0_4px_20px_rgba(16,185,129,0.22)]">
+        <div className="w-11 h-11 rounded-full bg-[#10B981]/20 border-2 border-[#10B981] flex items-center justify-center text-[#34D399] shrink-0">
+          <CheckCircle2 className="w-7 h-7 text-[#34D399]" />
         </div>
-        <div className="text-right">
-          <div className="text-xs font-black text-emerald-200 font-urdu">ادائیگی شدہ رقم:</div>
-          <div className="text-2xl font-black text-white tracking-tight leading-none mt-1">
-            {money(effectivePaid)} <span className="text-base text-emerald-300 font-urdu">روپے</span>
+        <div className="border-r border-[#10B981]/40 pr-3.5 text-right">
+          <div className="text-sm font-black text-[#34D399] font-urdu leading-tight">ادائیگی شدہ رقم:</div>
+          <div className="text-3xl font-black text-[#F4F3ED] font-mono tracking-tight leading-none mt-1">
+            {money(effectivePaid)} <span className="text-lg text-[#34D399] font-urdu font-normal">روپے</span>
           </div>
         </div>
       </div>
 
       {/* Box 6: Remaining Amount (باقی رقم) */}
-      <div className="mt-2 p-2.5 rounded-xl border border-cyan-400/80 bg-[#06143c] flex items-center justify-between shadow-[0_0_12px_rgba(0,150,255,0.2)]">
-        <div className="text-xl font-black text-amber-300">
-          {money(remaining)} <span className="text-sm font-normal text-slate-300 font-urdu">روپے</span>
+      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
+        <div className="text-2xl font-black text-[#E9B83F] font-mono">
+          {money(remaining)} <span className="text-sm font-normal text-[#B7C1D0] font-urdu">روپے</span>
         </div>
-        <span className="text-xs font-bold text-white font-urdu">باقی رقم:</span>
+        <span className="text-xs font-bold text-[#F4F3ED] font-urdu">باقی رقم:</span>
       </div>
 
-      {/* Box 7: شكریہ (Thank You) Banner */}
-      <div className="mt-3 text-center relative flex flex-col items-center justify-center">
+      {/* Box 7: شکریہ (Thank You) Banner with Golden Flourish */}
+      <div className="mt-2.5 text-center flex flex-col items-center justify-center">
         <div className="flex items-center justify-center gap-3 w-full">
-          <div className="h-0.5 bg-gradient-to-r from-transparent to-cyan-400 flex-1"></div>
+          <div className="h-[1.5px] bg-gradient-to-r from-transparent to-[#39C9D8]/50 flex-1"></div>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow-[0_0_8px_#00d2ff]">
+            <div className="w-7 h-7 rounded-full bg-[#101D35] border border-[#E9B83F] flex items-center justify-center text-[#E9B83F] shadow-sm">
               <ThumbsUp className="w-3.5 h-3.5" />
             </div>
-            <span className="text-2xl font-black text-white font-urdu tracking-wider">شکریہ</span>
+            <span className="text-2xl font-black text-[#F4F3ED] font-urdu tracking-wider">شکریہ</span>
           </div>
-          <div className="h-0.5 bg-gradient-to-l from-transparent to-cyan-400 flex-1"></div>
+          <div className="h-[1.5px] bg-gradient-to-l from-transparent to-[#39C9D8]/50 flex-1"></div>
         </div>
-        {/* Golden underline flourish */}
-        <div className="w-28 h-1 bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500 rounded-full mt-1 opacity-90 shadow-[0_0_6px_#f59e0b]"></div>
+        {/* Subtle Golden underline flourish */}
+        <div className="w-28 h-1 bg-gradient-to-r from-transparent via-[#E9B83F] to-transparent rounded-full mt-1 opacity-90"></div>
       </div>
 
-      {/* Milk Splash Waves Graphic at Bottom */}
-      <div className="mt-3 pt-1 flex justify-center opacity-85">
-        <svg viewBox="0 0 300 24" className="w-full h-5 text-cyan-300" fill="currentColor">
-          <path d="M0 12 Q 25 24 50 12 T 100 12 T 150 12 T 200 12 T 250 12 T 300 12 V 24 H 0 Z" fill="#FFFFFF" fillOpacity="0.4" />
-          <path d="M0 16 Q 25 6 50 16 T 100 16 T 150 16 T 200 16 T 250 16 T 300 16 V 24 H 0 Z" fill="#00d2ff" fillOpacity="0.3" />
+      {/* Milk Splash Waves Graphic with Golden Accent Line at Bottom */}
+      <div className="mt-2 pt-1 flex flex-col items-center">
+        <div className="w-full h-[1.5px] bg-gradient-to-r from-transparent via-[#E9B83F]/60 to-transparent"></div>
+        <svg viewBox="0 0 300 22" className="w-full h-5 text-[#39C9D8]" fill="currentColor">
+          <path d="M0 10 Q 25 22 50 10 T 100 10 T 150 10 T 200 10 T 250 10 T 300 10 V 22 H 0 Z" fill="#F4F3ED" fillOpacity="0.75" />
+          <path d="M0 14 Q 25 4 50 14 T 100 14 T 150 14 T 200 14 T 250 14 T 300 14 V 22 H 0 Z" fill="#39C9D8" fillOpacity="0.35" />
         </svg>
       </div>
     </div>
