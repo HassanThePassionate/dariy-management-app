@@ -14,7 +14,6 @@ import { ExpensesView } from './components/ExpensesView';
 import { GheeView } from './components/GheeView';
 import { ShopperView } from './components/ShopperView';
 import { SettingsView } from './components/SettingsView';
-import { WhatsAppBillingView } from './components/WhatsAppBillingView';
 import { CloseBackupModal } from './components/CloseBackupModal';
 import { PlaceholderPageView } from './components/PlaceholderPageView';
 import { AddMilkModal } from './components/AddMilkModal';
@@ -159,6 +158,7 @@ export const App: React.FC = () => {
         isDbConnected={dbInfo?.isConnected ?? false}
         canGoBack={activePage !== 'dashboard'}
         onBack={handleBack}
+        onNavigateQueue={() => navigateTo('monthly-khatta')}
       />
 
       {/* Sidebar Navigation Drawer */}
@@ -210,8 +210,6 @@ export const App: React.FC = () => {
 
         {activePage === 'shopper' && <ShopperView />}
 
-        {activePage === 'monthly-bills' && <WhatsAppBillingView />}
-
         {activePage === 'settings' && <SettingsView dbInfo={dbInfo} />}
 
         {activePage !== 'dashboard' &&
@@ -224,7 +222,6 @@ export const App: React.FC = () => {
           activePage !== 'fleet-expenses' &&
           activePage !== 'ghee' &&
           activePage !== 'shopper' &&
-          activePage !== 'monthly-bills' &&
           activePage !== 'settings' && (
             <PlaceholderPageView pageId={activePage} dbInfo={dbInfo} />
           )}

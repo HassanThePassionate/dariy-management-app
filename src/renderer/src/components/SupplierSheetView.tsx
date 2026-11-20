@@ -739,13 +739,13 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
 };
 
 const Shell: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 md:p-3 print:static print:bg-white print:p-0">
-    <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl max-w-[360px] md:max-w-[380px] w-full overflow-hidden max-h-[96vh] flex flex-col print:shadow-none print:max-h-none">
-      <div className="bg-brand-600 text-white px-4 py-2.5 flex items-center justify-between print:hidden shadow-xs">
-        <h2 className="text-xs font-black tracking-tight">{title}</h2>
-        <button onClick={onClose} className="p-1 rounded-xl hover:bg-brand-700/80 cursor-pointer"><X className="w-4 h-4" /></button>
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-2 md:p-4 print:static print:bg-white print:p-0">
+    <div className="bg-white rounded-2xl md:rounded-3xl shadow-2xl max-w-[760px] md:max-w-[820px] w-full overflow-hidden max-h-[96vh] flex flex-col print:shadow-none print:max-h-none">
+      <div className="bg-gradient-to-r from-emerald-800 to-slate-900 text-white px-5 py-3 flex items-center justify-between print:hidden shadow-xs">
+        <h2 className="text-sm font-black tracking-tight">{title}</h2>
+        <button onClick={onClose} className="p-1 rounded-xl hover:bg-white/20 cursor-pointer"><X className="w-5 h-5" /></button>
       </div>
-      <div className="p-3 space-y-2 overflow-y-auto">{children}</div>
+      <div className="p-4 space-y-3 overflow-y-auto">{children}</div>
     </div>
   </div>
 );

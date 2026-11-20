@@ -21,11 +21,25 @@ import {
   Sun,
   Moon,
   Clock,
+  Send,
+  Play,
+  Pause,
+  RotateCcw,
+  CheckCircle2,
+  Loader2,
+  X,
+  QrCode,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { KhataCustomer } from '../types/electron';
+import {
+  KhataCustomer,
+  WhatsAppWebStatus,
+  WhatsAppQueueProgress,
+  BillSettings,
+} from '../types/electron';
 import { BulkEntryModal } from './BulkEntryModal';
 import { KhataPayBillModal } from './KhataPayBillModal';
+import { WhatsAppQrModal } from './WhatsAppQrModal';
 
 type FilterTab = 'all' | 'due' | 'paid' | 'empty';
 type ShiftFilter = 'all' | 'Morning' | 'Evening' | 'Both';
@@ -58,6 +72,22 @@ const parseNumber = (raw: string | number | undefined | null) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
+const normalizeDigits = (str: string): string => {
+  const map: Record<string, string> = {
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+    '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  };
+  return (str || '').replace(/[۰-۹٠-٩]/g, (d) => map[d] || d);
+};
+
+const isValidPhone = (phone?: string): boolean => {
+  if (!phone) return false;
+  const clean = normalizeDigits(String(phone)).replace(/\D/g, '');
+  return clean.length >= 10 && clean.length <= 15;
+};
+
 const formatMoney = (value: number | undefined | null) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '0';
   return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -78,6 +108,8 @@ interface KhataRowProps {
   received: number;
   carry: number;
   version: number;
+  isHighlighted?: boolean;
+  waBillStatus?: { status: string; sentAt?: string };
   onCellChange: (customerId: number, day: number, raw: string) => void;
   onReceivedChange: (customerId: number, raw: string) => void;
   onPay: (customerId: number) => void;
@@ -98,6 +130,8 @@ const KhataRow = React.memo<KhataRowProps>(
     received,
     carry,
     version,
+    isHighlighted,
+    waBillStatus,
     onCellChange,
     onReceivedChange,
     onPay,
@@ -120,10 +154,19 @@ const KhataRow = React.memo<KhataRowProps>(
     const balance = carry + bill - received;
 
     return (
-      <tr className="group border-b border-slate-100 last:border-b-0 hover:bg-brand-50/30">
+      <tr
+        id={`row-customer-${customer.id}`}
+        className={`group border-b border-slate-100 last:border-b-0 transition-all duration-300 ${
+          isHighlighted
+            ? 'bg-rose-500/20 ring-2 ring-rose-500 ring-inset shadow-[0_0_15px_rgba(244,63,94,0.4)]'
+            : 'hover:bg-brand-50/30'
+        }`}
+      >
         {/* Sticky name with customer number */}
         <td
-          className="sticky left-0 z-20 bg-white group-hover:bg-brand-50/60 border-r border-slate-200 px-2.5 py-1.5"
+          className={`sticky left-0 z-20 border-r border-slate-200 px-2.5 py-1.5 transition-colors duration-300 ${
+            isHighlighted ? 'bg-rose-100/90' : 'bg-white group-hover:bg-brand-50/60'
+          }`}
           style={{ minWidth: NAME_COL_WIDTH, width: NAME_COL_WIDTH }}
         >
           <div className="flex items-center gap-1.5 min-w-0">
@@ -137,15 +180,43 @@ const KhataRow = React.memo<KhataRowProps>(
               {customer.name}
             </div>
           </div>
-          <div className="text-[10px] text-slate-400 truncate pl-0.5 mt-0.5">
-            {customer.phone || '-'}
-            {customer.shift ? ` • ${customer.shift === 'Evening' ? 'Evening' : customer.shift === 'Both' ? 'Both' : 'Morning'}` : ''}
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className="text-[10px] text-slate-400 truncate pl-0.5">
+              {customer.phone || '-'}
+              {customer.shift ? ` • ${customer.shift === 'Evening' ? 'Evening' : customer.shift === 'Both' ? 'Both' : 'Morning'}` : ''}
+            </span>
+            {waBillStatus?.status === 'sent' && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 text-[9.5px] font-black"
+                title={waBillStatus.sentAt ? `ارسال شدہ: ${new Date(waBillStatus.sentAt).toLocaleString()}` : 'بل کامیابی سے واٹس ایپ پر بھیج دیا گیا ہے'}
+              >
+                ✓ {language === 'ur' ? 'بل ارسال شدہ' : 'Bill Sent'}
+              </span>
+            )}
+            {waBillStatus?.status === 'queued' && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-600 border border-cyan-500/30 text-[9.5px] font-black animate-pulse"
+                title="بل قطار میں ہے، جلد بھیجا جائے گا"
+              >
+                ⏳ {language === 'ur' ? 'قطار میں' : 'Queued'}
+              </span>
+            )}
+            {waBillStatus?.status === 'failed' && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-500/15 text-rose-600 border border-rose-500/30 text-[9.5px] font-black"
+                title="بل ارسال نہیں ہو سکا"
+              >
+                ❌ {language === 'ur' ? 'ناکام' : 'Failed'}
+              </span>
+            )}
           </div>
         </td>
 
         {/* Sticky rate */}
         <td
-          className="sticky z-20 bg-white group-hover:bg-brand-50/60 border-r border-slate-200 px-1.5 py-1.5 text-right text-[11px] font-bold text-brand-700"
+          className={`sticky z-20 border-r border-slate-200 px-1.5 py-1.5 text-right text-[11px] font-bold text-brand-700 transition-colors duration-300 ${
+            isHighlighted ? 'bg-rose-100/90' : 'bg-white group-hover:bg-brand-50/60'
+          }`}
           style={{ left: NAME_COL_WIDTH, minWidth: RATE_COL_WIDTH, width: RATE_COL_WIDTH }}
         >
           {rate}
@@ -351,6 +422,33 @@ export const MonthlyKhattaView: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [toast, setToast] = useState('');
 
+  // WhatsApp & Safe Queue State
+  const [waStatus, setWaStatus] = useState<WhatsAppWebStatus | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [isConnectingWa, setIsConnectingWa] = useState<boolean>(false);
+  const [queueStatus, setQueueStatus] = useState<WhatsAppQueueProgress | null>(null);
+  const [waBillStatusMap, setWaBillStatusMap] = useState<Record<number, { status: string; sentAt?: string }>>({});
+  const [highlightCustomerId, setHighlightCustomerId] = useState<number | null>(null);
+  const [showSendAllModal, setShowSendAllModal] = useState<boolean>(false);
+  const [billSettings, setBillSettings] = useState<BillSettings | null>(null);
+
+  const refreshBillStatusMap = useCallback(async (targetMonthKey: string) => {
+    if (window.electronAPI?.getWhatsAppBillStatusMap) {
+      try {
+        const map = await window.electronAPI.getWhatsAppBillStatusMap(targetMonthKey);
+        if (map) setWaBillStatusMap(map);
+      } catch {}
+    }
+  }, []);
+
+  const formatCountdown = (seconds?: number) => {
+    if (typeof seconds !== 'number' || seconds <= 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const totalDays = useMemo(() => daysInMonthOf(monthKey), [monthKey]);
@@ -413,12 +511,22 @@ export const MonthlyKhattaView: React.FC = () => {
       for (const c of data.carry || []) carryMap[c.customer_id] = c.amount;
       setCarry(carryMap);
       setVersion((v) => v + 1);
+
+      // Sync queue status and bill delivery status map for loaded month
+      window.electronAPI
+        .getWhatsAppQueueStatus(key)
+        .then((q) => {
+          if (q) setQueueStatus(q);
+        })
+        .catch(() => {});
+
+      refreshBillStatusMap(key);
     } catch (err) {
       console.error('Failed to load khata month:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshBillStatusMap]);
 
   useEffect(() => {
     loadMonth(monthKey);
@@ -431,6 +539,62 @@ export const MonthlyKhattaView: React.FC = () => {
       Object.values(timers).forEach(clearTimeout);
     };
   }, []);
+
+  // WhatsApp listeners & status sync
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    window.electronAPI
+      .getWhatsAppStatus()
+      .then((s) => {
+        if (s) {
+          setWaStatus(s);
+          if (s.qrCodeDataUrl) setQrCodeData(s.qrCodeDataUrl);
+        }
+      })
+      .catch(() => {});
+
+    window.electronAPI
+      .getWhatsAppQueueStatus(monthKey)
+      .then((q) => {
+        if (q) setQueueStatus(q);
+      })
+      .catch(() => {});
+
+    window.electronAPI
+      .getBillSettings()
+      .then((bs) => {
+        if (bs) setBillSettings(bs);
+      })
+      .catch(() => {});
+
+    const unsubQR = window.electronAPI.onWhatsAppQR((qr) => {
+      setQrCodeData(qr);
+      setIsConnectingWa(false);
+    });
+
+    const unsubStatus = window.electronAPI.onWhatsAppStatus((status) => {
+      setWaStatus(status);
+      if (status.qrCodeDataUrl) {
+        setQrCodeData(status.qrCodeDataUrl);
+      } else if (status.connected) {
+        setQrCodeData(null);
+        showToast(language === 'ur' ? 'واٹس ایپ منسلک ہو گیا ہے!' : 'WhatsApp Connected!');
+      }
+      setIsConnectingWa(status.connecting);
+    });
+
+    const unsubQueue = window.electronAPI.onWhatsAppQueueProgress((progress) => {
+      setQueueStatus(progress);
+      refreshBillStatusMap(monthKey);
+    });
+
+    return () => {
+      unsubQR?.();
+      unsubStatus?.();
+      unsubQueue?.();
+    };
+  }, [language]);
 
   /* ---------------- per-row derived data ---------------- */
 
@@ -496,6 +660,29 @@ export const MonthlyKhattaView: React.FC = () => {
       }
     });
   }, [customers, searchQuery, filterTab, shiftFilter, rowStats]);
+
+  const scrollToCustomer = useCallback(
+    (customerId: number) => {
+      // If customer is hidden by filter or search, reset them
+      const isCurrentlyVisible = visibleCustomers.some((c) => c.id === customerId);
+      if (!isCurrentlyVisible) {
+        setSearchQuery('');
+        setFilterTab('all');
+        setShiftFilter('all');
+      }
+      setHighlightCustomerId(customerId);
+      setTimeout(() => {
+        const rowEl = document.getElementById(`row-customer-${customerId}`);
+        if (rowEl) {
+          rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 60);
+      setTimeout(() => {
+        setHighlightCustomerId((prev) => (prev === customerId ? null : prev));
+      }, 4500);
+    },
+    [visibleCustomers]
+  );
 
   // Summary cards dynamically reflect the filtered shift and customers
   const summary = useMemo(() => {
@@ -877,6 +1064,155 @@ export const MonthlyKhattaView: React.FC = () => {
   const payCustomer = payModal ? customers.find((c) => c.id === payModal.id) : undefined;
   const payStats = payCustomer ? rowStats[payCustomer.id] : undefined;
 
+  // Eligible customers with valid phone numbers for Send All
+  const eligibleCustomers = useMemo(() => {
+    return customers.filter((c) => {
+      const s = rowStats[c.id];
+      const bal = s ? s.balance : 0;
+      const lit = s ? s.liters : 0;
+      return isValidPhone(c.phone) && c.whatsapp_consent !== false && (bal > 0 || lit > 0);
+    });
+  }, [customers, rowStats]);
+
+  const handleConnectWhatsApp = async (force = false) => {
+    if (!window.electronAPI) return;
+    setIsConnectingWa(true);
+    setShowQrModal(true);
+    try {
+      const res = await window.electronAPI.connectWhatsApp(force);
+      if (res?.qrCodeDataUrl) {
+        setQrCodeData(res.qrCodeDataUrl);
+      }
+    } catch (err) {
+      console.error('Failed to initiate WhatsApp connection:', err);
+    } finally {
+      setIsConnectingWa(false);
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    if (!window.electronAPI) return;
+    try {
+      await window.electronAPI.disconnectWhatsApp();
+      setWaStatus(null);
+      setQrCodeData(null);
+      showToast(language === 'ur' ? 'واٹس ایپ منقطع کر دیا گیا' : 'WhatsApp Disconnected');
+    } catch (err) {
+      console.error('Failed to disconnect WhatsApp:', err);
+    }
+  };
+
+  const handleStartSendAllQueue = async () => {
+    if (!window.electronAPI) return;
+    if (!waStatus?.connected) {
+      setShowSendAllModal(false);
+      setShowQrModal(true);
+      if (!qrCodeData) handleConnectWhatsApp();
+      return;
+    }
+
+    setShowSendAllModal(false);
+
+    if (eligibleCustomers.length === 0) {
+      showToast(
+        language === 'ur'
+          ? 'اس مہینے کوئی اہل گاہک موجود نہیں ہے (جن کا درست فون نمبر ہو)'
+          : 'No eligible customers for this month'
+      );
+      return;
+    }
+
+    const payloads = eligibleCustomers.map((c) => {
+      const s = rowStats[c.id] || { liters: 0, bill: 0, balance: 0 };
+      return {
+        customerId: c.id,
+        customerName: c.name,
+        phone: c.phone,
+        billMonth: monthKey,
+        monthLabel: monthLabel,
+        liters: s.liters,
+        rate: Number(c.default_rate) || 240,
+        billAmount: s.bill,
+        carry: carry[c.id] || 0,
+        received: received[c.id] || 0,
+        payable: s.balance,
+        accountNumber: billSettings?.account_number || '02090111954760',
+        whatsappConsent: c.whatsapp_consent !== false,
+      };
+    });
+
+    try {
+      const res = await window.electronAPI.enqueueWhatsAppBills({
+        items: payloads,
+        speedPreset: 'safe_10m',
+        force: false,
+      });
+
+      showToast(
+        language === 'ur'
+          ? `${res.enqueued} گاہکوں کے بل محفوظ قطار (Queue) میں شامل ہو گئے ہیں!`
+          : `${res.enqueued} bills added to safe queue!`
+      );
+
+      const qStat = await window.electronAPI.getWhatsAppQueueStatus(monthKey);
+      setQueueStatus(qStat);
+    } catch (err: any) {
+      console.error('Failed to enqueue bills:', err);
+      showToast(language === 'ur' ? 'بل قطار میں شامل کرنے میں خرابی ہوئی' : 'Failed to enqueue bills');
+    }
+  };
+
+  const handlePauseQueue = async () => {
+    await window.electronAPI?.pauseWhatsAppQueue();
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'قطار روک دی گئی ہے' : 'Queue paused');
+  };
+
+  const handleResumeQueue = async () => {
+    await window.electronAPI?.resumeWhatsAppQueue({ month: monthKey });
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'قطار جاری کر دی گئی ہے' : 'Queue resumed');
+  };
+
+  const handleRetryFailedQueue = async () => {
+    await window.electronAPI?.retryFailedWhatsAppQueue({ month: monthKey });
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'ناکام پیغامات کو دوبارہ قطار میں لگا دیا گیا' : 'Retrying failed bills');
+  };
+
+  const handleClearFailedQueue = async () => {
+    if (!confirm(language === 'ur' ? 'کیا آپ تمام ناکام بلز کا ریکارڈ صاف کرنا چاہتے ہیں؟' : 'Clear all failed bill records?')) return;
+    await window.electronAPI?.clearFailedWhatsAppQueue({ month: monthKey });
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'تمام ناکام بلز کا ریکارڈ صاف کر دیا گیا' : 'Failed records cleared');
+  };
+
+  const handleClearQueueItem = async (customerId: number) => {
+    await window.electronAPI?.clearWhatsAppQueueItem({ customerId, month: monthKey });
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'گاہک کا ریکارڈ قطار سے ہٹا دیا گیا' : 'Customer removed from queue');
+  };
+
+  const handleCancelQueue = async () => {
+    if (
+      !confirm(
+        language === 'ur'
+          ? 'کیا آپ واقعی اس مہینے کی تمام قطار (باقی و ناکام تمام بلز) منسوخ اور صاف کرنا چاہتے ہیں؟'
+          : 'Cancel queue and clear all pending & failed bills for this month?'
+      )
+    )
+      return;
+    await window.electronAPI?.clearWhatsAppQueue({ month: monthKey, scope: 'all' });
+    const qStat = await window.electronAPI?.getWhatsAppQueueStatus(monthKey);
+    if (qStat) setQueueStatus(qStat);
+    showToast(language === 'ur' ? 'تمام قطار صاف کر دی گئی' : 'Queue cleared');
+  };
+
   /* ---------------- bulk entry ---------------- */
 
   const handleBulkApply = async (payload: {
@@ -1129,6 +1465,33 @@ export const MonthlyKhattaView: React.FC = () => {
               <span>{t.bulkEntry}</span>
             </button>
 
+            {/* Prominent Send All Bills via WhatsApp Safe Queue Button */}
+            <button
+              type="button"
+              disabled={queueStatus?.isRunning}
+              onClick={() => {
+                if (queueStatus?.isRunning) return;
+                setShowSendAllModal(true);
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-black shadow-xs transition-all ${
+                queueStatus?.isRunning
+                  ? 'bg-slate-700/60 text-slate-400 cursor-not-allowed border border-slate-600/40'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 cursor-pointer shadow-md'
+              }`}
+              title={
+                queueStatus?.isRunning
+                  ? (language === 'ur' ? 'قطار پہلے سے جاری ہے... مکمل ہونے تک نئی قطار شروع نہیں کی جا سکتی' : 'Queue is already running...')
+                  : (language === 'ur' ? 'اس مہینے کے تمام گاہکوں کو بل بھیجیں' : 'Send all bills for this month')
+              }
+            >
+              <Send className="w-4 h-4" />
+              <span>
+                {queueStatus?.isRunning
+                  ? (language === 'ur' ? 'قطار جاری ہے...' : 'Queue Running...')
+                  : (language === 'ur' ? 'تمام بل بھیجیں (Send All)' : 'Send All Bills')}
+              </span>
+            </button>
+
             <div className="relative">
               <button
                 onClick={() => setIsExportOpen((v) => !v)}
@@ -1249,6 +1612,243 @@ export const MonthlyKhattaView: React.FC = () => {
         </div>
       </div>
 
+      {/* Live WhatsApp Queue Status Banner */}
+      {queueStatus && queueStatus.total > 0 && (
+        <div className="bg-gradient-to-r from-[#091a38] via-[#0b2548] to-[#091a38] rounded-2xl border border-cyan-500/40 p-4 shadow-[0_0_20px_rgba(6,182,212,0.2)] text-white space-y-3">
+          {/* Top Row: Icon, Title, Counts & Action Controls */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 ${
+                  queueStatus.isRunning
+                    ? 'bg-cyan-500/20 border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                    : queueStatus.isPaused
+                    ? 'bg-amber-500/20 border-amber-400/50 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                    : queueStatus.queued > 0
+                    ? 'bg-blue-500/20 border-blue-400/50'
+                    : 'bg-emerald-500/20 border-emerald-400/50'
+                }`}
+              >
+                {queueStatus.isRunning ? (
+                  <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                ) : queueStatus.isPaused ? (
+                  <Pause className="w-5 h-5 text-amber-400" />
+                ) : queueStatus.queued === 0 ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <Play className="w-5 h-5 text-blue-400" />
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-sm text-white">
+                    {language === 'ur' ? 'محفوظ واٹس ایپ قطار (Safe Queue)' : 'WhatsApp Safe Queue'}
+                  </span>
+                  <span
+                    className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold border ${
+                      queueStatus.isRunning
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 animate-pulse'
+                        : queueStatus.isPaused
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : queueStatus.queued === 0
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                    }`}
+                  >
+                    {queueStatus.isRunning
+                      ? language === 'ur'
+                        ? 'جاری ہے...'
+                        : 'Running'
+                      : queueStatus.isPaused
+                      ? language === 'ur'
+                        ? 'روکا گیا ہے'
+                        : 'Paused'
+                      : queueStatus.queued === 0
+                      ? language === 'ur'
+                        ? 'تمام بل ارسال ہو چکے ہیں'
+                        : 'Completed'
+                      : language === 'ur'
+                      ? 'انتظار میں (جاری رکھیں)'
+                      : 'Ready to Resume'}
+                  </span>
+                </div>
+
+                {/* Counts: Sent, Remaining/Queued, Failed */}
+                <div className="flex items-center gap-3 text-xs text-slate-300 mt-1 flex-wrap">
+                  <span className="flex items-center gap-1 font-semibold">
+                    <span className="text-emerald-400 font-bold">✓ {queueStatus?.sent ?? 0}</span>
+                    <span>/ {queueStatus?.total ?? 0}</span>
+                    <span className="text-slate-400">({language === 'ur' ? 'بھیجے گئے' : 'Sent'})</span>
+                  </span>
+                  <span className="text-slate-500">•</span>
+                  <span className="flex items-center gap-1 font-semibold">
+                    <span className="text-cyan-400 font-bold">{queueStatus?.queued ?? 0}</span>
+                    <span className="text-slate-400">({language === 'ur' ? 'باقی ہیں' : 'Remaining'})</span>
+                  </span>
+                  {(queueStatus?.failed ?? 0) > 0 && (
+                    <>
+                      <span className="text-slate-500">•</span>
+                      <span className="flex items-center gap-1 font-semibold text-rose-400">
+                        <span className="font-bold">❌ {queueStatus?.failed ?? 0}</span>
+                        <span className="text-rose-300">({language === 'ur' ? 'ناکام' : 'Failed'})</span>
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {queueStatus.isRunning ? (
+                <button
+                  type="button"
+                  onClick={handlePauseQueue}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                >
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>{language === 'ur' ? 'روکیں (Pause)' : 'Pause'}</span>
+                </button>
+              ) : queueStatus.isPaused || queueStatus.queued > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleResumeQueue}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-500/50 text-emerald-300 text-xs font-black cursor-pointer transition-all shadow-[0_0_12px_rgba(16,185,129,0.3)] animate-pulse"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>{language === 'ur' ? 'جاری رکھیں (Resume)' : 'Resume'}</span>
+                </button>
+              ) : null}
+
+              {queueStatus.failed > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRetryFailedQueue}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{language === 'ur' ? 'ناکام دوبارہ بھیجیں' : 'Retry Failed'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClearFailedQueue}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 border border-rose-500/50 text-rose-200 text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{language === 'ur' ? 'ناکام صاف کریں' : 'Clear Failed'}</span>
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCancelQueue}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer transition-colors"
+                title={language === 'ur' ? 'اس مہینے کے تمام باقی و ناکام بلز کی قطار صاف کریں' : 'Clear all queue'}
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>{language === 'ur' ? 'مکمل قطار صاف کریں (Clear All)' : 'Clear All'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Live countdown & next recipient banner strip */}
+          {queueStatus.queued > 0 && (
+            <div className="bg-[#051126] border border-cyan-500/25 rounded-xl p-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span className="text-slate-300">
+                  {language === 'ur' ? 'اگلا بل ارسال ہونے میں باقی وقت:' : 'Next bill dispatch in:'}
+                </span>
+                <span className="font-mono font-black text-cyan-300 text-sm px-2.5 py-0.5 rounded-md bg-cyan-950/70 border border-cyan-500/40 shadow-xs">
+                  {queueStatus.isRunning
+                    ? formatCountdown(queueStatus.nextSendInSeconds)
+                    : queueStatus.isPaused
+                    ? language === 'ur'
+                      ? 'روکا گیا ہے'
+                      : 'Paused'
+                    : '00:00'}
+                </span>
+                <span className="text-[11px] text-slate-400 hidden sm:inline">
+                  (~10 {language === 'ur' ? 'منٹ سیف وقفہ' : 'min safe pacing'})
+                </span>
+              </div>
+
+              {(queueStatus.currentCustomerName || queueStatus.nextCustomerName) && (
+                <div className="flex items-center gap-1.5 text-slate-300">
+                  <span className="text-slate-400">
+                    {language === 'ur' ? 'اگلا گاہک:' : 'Next Customer:'}
+                  </span>
+                  <span className="font-bold text-white px-2 py-0.5 rounded-md bg-blue-950/70 border border-blue-500/40">
+                    {queueStatus.currentCustomerName || queueStatus.nextCustomerName}
+                    {(queueStatus.currentCustomerPhone || queueStatus.nextCustomerPhone) && (
+                      <span className="font-mono text-cyan-300 text-[11px] ml-1">
+                        ({queueStatus.currentCustomerPhone || queueStatus.nextCustomerPhone})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Failed items list with click-to-scroll & clear */}
+          {queueStatus.failed > 0 && queueStatus.failedItems && queueStatus.failedItems.length > 0 && (
+            <div className="bg-rose-950/40 border border-rose-500/40 rounded-xl p-3 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="text-[11px] font-bold text-rose-300 flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>
+                    {language === 'ur'
+                      ? 'جن گاہکوں کو بل نہیں گیا (نام پر کلک کریں تاکہ جدول میں اس گاہک پر اسکرول ہو سکے):'
+                      : 'Failed deliveries (click name to scroll to customer in table):'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearFailedQueue}
+                  className="self-start sm:self-auto px-2.5 py-1 rounded-lg bg-rose-600/40 hover:bg-rose-600/60 border border-rose-400/50 text-rose-100 text-[11px] font-bold cursor-pointer transition-colors shadow-2xs"
+                  title={language === 'ur' ? 'تمام فیلڈ ریکارڈز ختم کریں' : 'Clear all failed records'}
+                >
+                  {language === 'ur' ? '🗑️ تمام ناکام صاف کریں' : 'Clear All Failed'}
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                {queueStatus.failedItems.map((f) => (
+                  <div
+                    key={`${f.customerId}-${f.phone}`}
+                    className="flex items-center rounded-lg bg-rose-500/20 hover:bg-rose-500/25 border border-rose-400/50 text-rose-200 text-xs font-bold overflow-hidden transition-all shadow-xs"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => scrollToCustomer(f.customerId)}
+                      title={f.errorMessage ? `Error: ${f.errorMessage}` : (language === 'ur' ? 'اس گاہک پر جائیں' : 'Scroll to customer')}
+                      className="px-2.5 py-1 hover:bg-rose-500/30 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                    >
+                      <span>❌ {f.customerName}</span>
+                      <span className="font-mono text-[10px] text-rose-300">({f.phone})</span>
+                      <span className="text-[10px] text-cyan-300 underline font-normal ml-0.5">
+                        {language === 'ur' ? 'دیکھیں ↗' : 'View ↗'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleClearQueueItem(f.customerId)}
+                      title={language === 'ur' ? 'اس گاہک کو ناکام فہرست سے ہٹائیں' : 'Dismiss this failed customer'}
+                      className="px-2 py-1.5 bg-rose-950/40 hover:bg-rose-600/70 text-rose-300 hover:text-white border-l border-rose-400/40 cursor-pointer transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 3. Spreadsheet grid */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         <div
@@ -1355,6 +1955,8 @@ export const MonthlyKhattaView: React.FC = () => {
                     received={received[c.id] || 0}
                     carry={carry[c.id] || 0}
                     version={version}
+                    isHighlighted={highlightCustomerId === c.id}
+                    waBillStatus={waBillStatusMap[c.id]}
                     onCellChange={handleCellChange}
                     onReceivedChange={handleReceivedChange}
                     onPay={openPay}
@@ -1495,6 +2097,7 @@ export const MonthlyKhattaView: React.FC = () => {
         customerId={payCustomer?.id}
         customerName={payCustomer?.name || ''}
         phone={payCustomer?.phone || ''}
+        monthKey={monthKey}
         monthLabel={monthLabel}
         rate={Number(payCustomer?.default_rate) || 0}
         liters={payStats?.liters || 0}
@@ -1514,6 +2117,73 @@ export const MonthlyKhattaView: React.FC = () => {
         monthLabel={monthLabel}
         onClose={() => setIsBulkOpen(false)}
         onApply={handleBulkApply}
+      />
+
+      {/* Send All Confirmation Modal */}
+      {showSendAllModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#081028] border-2 border-emerald-400 rounded-3xl max-w-md w-full p-6 text-slate-100 shadow-[0_0_40px_rgba(16,185,129,0.35)] space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center shrink-0">
+                <Send className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="font-black text-base text-white">
+                  {language === 'ur' ? 'تمام گاہکوں کو بل بھیجیں؟' : 'Send All Bills via WhatsApp?'}
+                </h3>
+                <p className="text-xs text-emerald-300">
+                  {monthLabel} • {eligibleCustomers.length} {language === 'ur' ? 'اہل گاہک' : 'Eligible Customers'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[#0c163b] rounded-2xl border border-blue-500/20 p-4 space-y-2 text-xs text-slate-300 leading-relaxed">
+              <div className="flex items-center justify-between font-bold text-white pb-2 border-b border-blue-500/20">
+                <span>{language === 'ur' ? 'منتخب مہینہ:' : 'Selected Month:'}</span>
+                <span className="text-cyan-300">{monthLabel}</span>
+              </div>
+              <div className="flex items-center justify-between font-bold text-white pb-2 border-b border-blue-500/20">
+                <span>{language === 'ur' ? 'اہل گاہک (درست فون نمبر):' : 'Eligible Customers:'}</span>
+                <span className="text-emerald-400 font-mono text-sm">{eligibleCustomers.length}</span>
+              </div>
+              <p className="text-[11.5px] text-slate-400 pt-1">
+                🛡️ <b>{language === 'ur' ? 'محفوظ رفتار کی یقین دہانی:' : 'Safe Queue Protection:'}</b>{' '}
+                {language === 'ur'
+                  ? 'پیغامات بغیر اکاؤنٹ بین کے خطرے کے محفوظ رفتار (تقریباً 10 منٹ فی میسج) کے ساتھ قطار میں بھیجے جائیں گے، اور صرف بل کی خوبصورت تصویر جائے گی (کوئی لمبا میسج نہیں)۔'
+                  : 'Bills will be sent safely spaced (~10 minutes apart) to protect your WhatsApp account. Only the bill image is sent.'}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSendAllModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer transition-colors"
+              >
+                {language === 'ur' ? 'منسوخ کریں' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleStartSendAllQueue}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all"
+              >
+                <Send className="w-4 h-4" />
+                <span>{language === 'ur' ? '🚀 بھیجنا شروع کریں' : 'Start Queue'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp QR Modal */}
+      <WhatsAppQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        waStatus={waStatus}
+        qrCodeData={qrCodeData}
+        isConnecting={isConnectingWa}
+        onRefresh={() => handleConnectWhatsApp(true)}
+        onDisconnect={handleDisconnectWhatsApp}
       />
     </div>
   );

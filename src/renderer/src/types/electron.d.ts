@@ -304,6 +304,42 @@ export interface WhatsAppBillLog {
   read_at?: string;
 }
 
+export interface WhatsAppWebStatus {
+  connected: boolean;
+  connecting: boolean;
+  status: 'disconnected' | 'connecting' | 'scan_qr' | 'connected' | 'reconnecting';
+  qrCodeDataUrl?: string | null;
+  phone?: string;
+  name?: string;
+  error?: string | null;
+  lastConnectedAt?: string | null;
+}
+
+export interface WhatsAppQueueProgress {
+  isRunning: boolean;
+  isPaused: boolean;
+  speedPreset: string;
+  activeMonth: string;
+  total: number;
+  queued: number;
+  sending: number;
+  sent: number;
+  delivered: number;
+  failed: number;
+  currentCustomerName?: string;
+  currentCustomerPhone?: string;
+  nextCustomerName?: string;
+  nextCustomerPhone?: string;
+  nextSendInSeconds: number;
+  estimatedCompletionMinutes: number;
+  failedItems?: Array<{
+    customerId: number;
+    customerName: string;
+    phone: string;
+    errorMessage?: string;
+  }>;
+}
+
 export interface ElectronAPI {
   getDbInfo: () => Promise<DbInfo>;
   getSettings: () => Promise<Record<string, string>>;
@@ -486,8 +522,24 @@ export interface ElectronAPI {
   restoreDbBackup: () => Promise<{ success: boolean; error?: string }>;
   exportJsonBackup: () => Promise<{ success: boolean; path?: string; error?: string }>;
   exportCsvBackup: () => Promise<{ success: boolean; path?: string; error?: string }>;
-  getWhatsAppStatus: () => Promise<any>;
-  disconnectWhatsApp: () => Promise<{ success: boolean }>;
+  connectWhatsApp: (payload?: { force?: boolean }) => Promise<WhatsAppWebStatus>;
+  getWhatsAppStatus: () => Promise<WhatsAppWebStatus>;
+  disconnectWhatsApp: () => Promise<WhatsAppWebStatus>;
+  enqueueWhatsAppBills: (payload: { items: any[]; speedPreset?: string; force?: boolean }) => Promise<{ enqueued: number; skipped: number }>;
+  pauseWhatsAppQueue: () => Promise<any>;
+  resumeWhatsAppQueue: (payload?: { month?: string }) => Promise<any>;
+  clearWhatsAppQueue: (payload?: { month?: string; scope?: 'all' | 'queued' | 'failed' }) => Promise<{ cleared: number }>;
+  clearFailedWhatsAppQueue: (payload?: { month?: string }) => Promise<{ cleared: number }>;
+  clearWhatsAppQueueItem: (payload: { customerId: number; month?: string }) => Promise<{ cleared: number }>;
+  retryFailedWhatsAppQueue: (payload?: { month?: string }) => Promise<{ retried: number }>;
+  getWhatsAppQueueStatus: (month?: string) => Promise<WhatsAppQueueProgress>;
+  getWhatsAppQueueItems: (month: string) => Promise<any[]>;
+  getWhatsAppBillStatusMap: (month: string) => Promise<Record<number, { status: string; sentAt?: string }>>;
+  setWhatsAppSpeedPreset: (preset: string) => Promise<any>;
+  sendSingleBillDirect: (payload: { item: any; settings: any }) => Promise<{ success: boolean; messageId?: string; error?: string }>;
+  onWhatsAppQR: (callback: (qr: string) => void) => () => void;
+  onWhatsAppStatus: (callback: (status: WhatsAppWebStatus) => void) => () => void;
+  onWhatsAppQueueProgress: (callback: (progress: WhatsAppQueueProgress) => void) => () => void;
   getVehicles: () => Promise<Array<{ id: number; name: string; reg_number: string; type: string; assigned_to?: string }>>;
   addVehicle: (v: { name: string; regNumber: string; type?: string; assignedTo?: string }) => Promise<{ success: boolean; error?: string }>;
   deleteVehicle: (id: number) => Promise<{ success: boolean }>;

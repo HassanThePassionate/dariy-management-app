@@ -221,6 +221,24 @@ export interface ElectronAPI {
     businessAccountId?: string;
     error?: string;
   }>;
+  connectWhatsApp: (payload?: { force?: boolean }) => Promise<any>;
+  disconnectWhatsApp: () => Promise<any>;
+  getWhatsAppStatus: () => Promise<any>;
+  enqueueWhatsAppBills: (payload: { items: any[]; speedPreset?: string; force?: boolean }) => Promise<{ enqueued: number; skipped: number }>;
+  pauseWhatsAppQueue: () => Promise<any>;
+  resumeWhatsAppQueue: (payload?: { month?: string }) => Promise<any>;
+  clearWhatsAppQueue: (payload?: { month?: string; scope?: 'all' | 'queued' | 'failed' }) => Promise<any>;
+  clearFailedWhatsAppQueue: (payload?: { month?: string }) => Promise<any>;
+  clearWhatsAppQueueItem: (payload: { customerId: number; month?: string }) => Promise<any>;
+  retryFailedWhatsAppQueue: (payload?: { month?: string }) => Promise<any>;
+  getWhatsAppQueueStatus: (month?: string) => Promise<any>;
+  getWhatsAppQueueItems: (month: string) => Promise<any[]>;
+  getWhatsAppBillStatusMap: (month: string) => Promise<Record<number, { status: string; sentAt?: string }>>;
+  setWhatsAppSpeedPreset: (preset: string) => Promise<any>;
+  sendSingleBillDirect: (payload: { item: any; settings: any }) => Promise<any>;
+  onWhatsAppQR: (callback: (qr: string) => void) => () => void;
+  onWhatsAppStatus: (callback: (status: any) => void) => () => void;
+  onWhatsAppQueueProgress: (callback: (progress: any) => void) => () => void;
   sendWhatsAppSingleBill: (payload: { item: any; settings: any; force?: boolean }) => Promise<{
     success: boolean;
     messageId?: string;
@@ -321,8 +339,42 @@ const api: ElectronAPI = {
   restoreDbBackup: () => ipcRenderer.invoke('backup:restoreDb'),
   exportJsonBackup: () => ipcRenderer.invoke('backup:exportJson'),
   exportCsvBackup: () => ipcRenderer.invoke('backup:exportCsv'),
+  connectWhatsApp: (payload) => ipcRenderer.invoke('whatsapp:connect', payload),
   getWhatsAppStatus: () => ipcRenderer.invoke('whatsapp:getStatus'),
   disconnectWhatsApp: () => ipcRenderer.invoke('whatsapp:disconnect'),
+  enqueueWhatsAppBills: (payload) => ipcRenderer.invoke('whatsapp:enqueueBills', payload),
+  pauseWhatsAppQueue: () => ipcRenderer.invoke('whatsapp:pauseQueue'),
+  resumeWhatsAppQueue: (payload) => ipcRenderer.invoke('whatsapp:resumeQueue', payload),
+  clearWhatsAppQueue: (payload) => ipcRenderer.invoke('whatsapp:clearQueue', payload),
+  clearFailedWhatsAppQueue: (payload) => ipcRenderer.invoke('whatsapp:clearFailedQueue', payload),
+  clearWhatsAppQueueItem: (payload) => ipcRenderer.invoke('whatsapp:clearQueueItem', payload),
+  retryFailedWhatsAppQueue: (payload) => ipcRenderer.invoke('whatsapp:retryFailed', payload),
+  getWhatsAppQueueStatus: (month) => ipcRenderer.invoke('whatsapp:getQueueStatus', month),
+  getWhatsAppQueueItems: (month) => ipcRenderer.invoke('whatsapp:getQueueItems', month),
+  getWhatsAppBillStatusMap: (month) => ipcRenderer.invoke('whatsapp:getBillStatusMap', month),
+  setWhatsAppSpeedPreset: (preset) => ipcRenderer.invoke('whatsapp:setSpeedPreset', preset),
+  sendSingleBillDirect: (payload) => ipcRenderer.invoke('whatsapp:sendSingleBillDirect', payload),
+  onWhatsAppQR: (callback) => {
+    const listener = (_e: any, qr: string) => callback(qr);
+    ipcRenderer.on('whatsapp:qr', listener);
+    return () => {
+      ipcRenderer.removeListener('whatsapp:qr', listener);
+    };
+  },
+  onWhatsAppStatus: (callback) => {
+    const listener = (_e: any, status: any) => callback(status);
+    ipcRenderer.on('whatsapp:status', listener);
+    return () => {
+      ipcRenderer.removeListener('whatsapp:status', listener);
+    };
+  },
+  onWhatsAppQueueProgress: (callback) => {
+    const listener = (_e: any, progress: any) => callback(progress);
+    ipcRenderer.on('whatsapp:queue-progress', listener);
+    return () => {
+      ipcRenderer.removeListener('whatsapp:queue-progress', listener);
+    };
+  },
   getVehicles: () => ipcRenderer.invoke('vehicles:list'),
   addVehicle: (v) => ipcRenderer.invoke('vehicles:add', v),
   deleteVehicle: (id) => ipcRenderer.invoke('vehicles:delete', id),

@@ -37,7 +37,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
 
   // 1. Bill Settings State
   const [billForm, setBillForm] = useState({
-    shop_title: 'قاری ظفر اقبال ملک شاپ',
+    shop_title: 'قاری ظفر ملک شاپ',
     owner_name: 'حافظ مصعب ظفر',
     phone: '+92 321 0001168',
     bank_name: 'میزان بینک',
@@ -413,13 +413,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ dbInfo }) => {
             </button>
           </form>
 
-          {/* Real-Time Modern Blue Bill Live Preview */}
+          {/* Real-Time Modern Bill Live Preview */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700">
-                {ur ? 'اصلی بل کا لائیو پیش منظر (Live Blue Bill Card):' : 'Live Preview on Bill:'}
+                {ur ? 'بل کا لائیو پیش منظر (Live Invoice Preview):' : 'Live Preview on Bill:'}
               </span>
-              <span className="text-[10px] font-bold text-brand-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
                 Live Preview
               </span>
             </div>

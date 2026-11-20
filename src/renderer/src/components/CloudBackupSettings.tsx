@@ -58,29 +58,21 @@ export const CloudBackupSettings: React.FC = () => {
   const [restoreStage, setRestoreStage] = useState('');
   const [restoringBackupId, setRestoringBackupId] = useState<string | null>(null);
 
-  // WhatsApp Meta Cloud Status
-  const [waStatus, setWaStatus] = useState<WhatsAppCloudStatus | null>(null);
-  const [testPhone, setTestPhone] = useState('');
-  const [isSendingTest, setIsSendingTest] = useState(false);
-  const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   // Load Data
   const loadCloudData = useCallback(async () => {
     if (!window.electronAPI) return;
     try {
-      const [cfg, conn, syncMeta, history, wa] = await Promise.all([
+      const [cfg, conn, syncMeta, history] = await Promise.all([
         window.electronAPI.getCloudConfig(),
         window.electronAPI.getCloudConnectionStatus(),
         window.electronAPI.getCloudSyncMeta(),
         window.electronAPI.getCloudBackupHistory(),
-        window.electronAPI.getWhatsAppCloudStatus(),
       ]);
 
       if (cfg) setConfig(cfg);
       setConnStatus(conn);
       setLastSyncAt(syncMeta?.lastSyncAt || null);
       setBackupHistory(history?.backups || []);
-      setWaStatus(wa);
     } catch (err) {
       console.error('Failed to load cloud settings:', err);
     } finally {
@@ -229,56 +221,6 @@ export const CloudBackupSettings: React.FC = () => {
     } finally {
       setIsRestoring(false);
       setRestoringBackupId(null);
-    }
-  };
-
-  // Send WhatsApp Test Message
-  const handleSendTestMessage = async () => {
-    if (!window.electronAPI || !testPhone.trim() || isSendingTest) return;
-    setIsSendingTest(true);
-    setTestResult(null);
-
-    try {
-      const res = await window.electronAPI.sendWhatsAppSingleBill({
-        item: {
-          customerId: 0,
-          customerName: 'Test Recipient',
-          phone: testPhone.trim(),
-          billMonth: '2026-11',
-          monthLabel: 'Test Bill',
-          liters: 10,
-          rate: 240,
-          billAmount: 2400,
-          carry: 0,
-          received: 0,
-          payable: 2400,
-          whatsappConsent: true,
-        },
-        settings: {
-          shop_title: 'قاری ظفر اقبال ملک شاپ',
-          owner_name: 'حافظ مصعب ظفر',
-          phone: '+92 321 0001168',
-        },
-        force: true,
-      });
-
-      if (res.success) {
-        setTestResult({
-          type: 'success',
-          text: ur
-            ? `ٹیسٹ میسج کامیابی سے بھیج دیا گیا! Message ID: ${res.messageId}`
-            : `Test message sent successfully! Message ID: ${res.messageId}`,
-        });
-      } else {
-        setTestResult({
-          type: 'error',
-          text: res.error || (ur ? 'ٹیسٹ میسج فیل ہو گیا' : 'Test message failed'),
-        });
-      }
-    } catch (err: any) {
-      setTestResult({ type: 'error', text: err.message || 'Error sending test message' });
-    } finally {
-      setIsSendingTest(false);
     }
   };
 
@@ -496,93 +438,7 @@ export const CloudBackupSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Meta WhatsApp Cloud API Settings & Test Dispatch */}
-      <div className="bg-[#081028] border border-blue-500/20 rounded-3xl p-6 shadow-2xl space-y-4">
-        <div className="flex items-center gap-3 pb-3 border-b border-blue-500/20">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-            <MessageSquare className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-white flex items-center gap-2">
-              <span>{ur ? 'آفیشل Meta واٹس ایپ کلاؤڈ API ترتیبات' : 'Meta WhatsApp Cloud API Configuration'}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
-                {waStatus?.connected ? 'CONNECTED' : 'STANDBY'}
-              </span>
-            </h3>
-            <p className="text-xs text-slate-300">
-              {ur
-                ? 'مستقل ایکسٹس ٹوکن کلاؤڈ بیک اینڈ پر محفوظ ہیں اور ڈیسک ٹاپ کلائنٹ کو کبھی ظاہر نہیں کیے جاتے'
-                : 'Permanent access tokens are stored securely on the backend only and never exposed to the client'}
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div className="p-3 bg-[#06143c] border border-blue-500/20 rounded-2xl">
-            <span className="text-slate-400 block mb-0.5">{ur ? 'کاروباری فون نمبر:' : 'Business Phone Number:'}</span>
-            <span className="font-mono font-bold text-white text-sm">
-              {waStatus?.displayPhoneNumber || (ur ? 'غیر فعال' : 'Not Configured')}
-            </span>
-          </div>
-
-          <div className="p-3 bg-[#06143c] border border-blue-500/20 rounded-2xl">
-            <span className="text-slate-400 block mb-0.5">{ur ? 'فون نمبر ID:' : 'Phone Number ID:'}</span>
-            <span className="font-mono font-bold text-cyan-300 text-xs">
-              {waStatus?.phoneNumberId || 'Pending Backend Env'}
-            </span>
-          </div>
-
-          <div className="p-3 bg-[#06143c] border border-blue-500/20 rounded-2xl">
-            <span className="text-slate-400 block mb-0.5">{ur ? 'منظور شدہ یوٹیلٹی ٹیمپلیٹ:' : 'Approved Utility Template:'}</span>
-            <span className="font-mono font-bold text-emerald-300 text-xs uppercase flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              monthly_dairy_bill ({waStatus?.templateStatus || 'APPROVED'})
-            </span>
-          </div>
-        </div>
-
-        {/* Test Message Dispatch Box */}
-        <div className="p-4 rounded-2xl bg-[#06143c] border border-cyan-400/30 space-y-3">
-          <h4 className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
-            <Send className="w-3.5 h-3.5 text-cyan-400" />
-            <span>{ur ? 'ٹیسٹ واٹس ایپ میسج ارسال کریں' : 'Send Test WhatsApp Message'}</span>
-          </h4>
-
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <input
-              type="text"
-              value={testPhone}
-              onChange={(e) => setTestPhone(e.target.value)}
-              placeholder={ur ? 'موبائل نمبر درج کریں (مثلاً: 03210001168)' : 'Enter test phone number (e.g. 03210001168)'}
-              className="flex-1 bg-[#050d24] border border-blue-500/20 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 font-mono"
-            />
-            <button
-              type="button"
-              onClick={handleSendTestMessage}
-              disabled={isSendingTest || !testPhone.trim()}
-              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-            >
-              <Send className={`w-3.5 h-3.5 ${isSendingTest ? 'animate-spin' : ''}`} />
-              <span>{isSendingTest ? (ur ? 'بھیجا جا رہا ہے...' : 'Sending...') : ur ? 'ٹیسٹ بل بھیجیں' : 'Send Test'}</span>
-            </button>
-          </div>
-
-          {testResult && (
-            <div
-              className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border ${
-                testResult.type === 'success'
-                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                  : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
-              }`}
-            >
-              {testResult.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-              <span>{testResult.text}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 3. Cloud Backend Connection Settings Form */}
+      {/* 2. Cloud Backend Connection Settings Form */}
       <div className="bg-[#081028] border border-blue-500/20 rounded-3xl p-6 shadow-2xl space-y-4">
         <div className="flex items-center gap-3 pb-3 border-b border-blue-500/20">
           <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/50 flex items-center justify-center text-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]">

@@ -6,6 +6,8 @@ import { setupSchema } from './db/schema';
 import { registerIpcHandlers } from './db/handlers';
 import { getConnectionStatus } from './cloud/connectivity';
 import { createAndUploadCloudBackup, cancelActiveBackup } from './cloud/cloudBackup';
+import { initQueueDeliveryReceiptListener, initQueueOnStartup } from './whatsapp/queueManager';
+import { connectToWhatsApp } from './whatsapp/baileysManager';
 
 let mainWindow: BrowserWindow | null = null;
 let isForceQuit = false;
@@ -111,6 +113,19 @@ app.whenReady().then(() => {
 
   // 2. Register IPC handlers
   registerIpcHandlers();
+
+  // 3. Initialize WhatsApp Queue Recovery, Delivery Receipts & Auto-Connect
+  try {
+    initQueueOnStartup();
+    initQueueDeliveryReceiptListener();
+    setTimeout(() => {
+      connectToWhatsApp().catch((err) => {
+        console.warn('[WhatsApp] Background auto-connect notice:', err.message);
+      });
+    }, 1500);
+  } catch (waErr) {
+    console.warn('[WhatsApp] Init listener error:', waErr);
+  }
 
   // Register shutdown dialog IPC handlers
   ipcMain.handle('app:confirmForceClose', () => {

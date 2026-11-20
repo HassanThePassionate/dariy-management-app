@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -11,11 +11,24 @@ import {
   Printer,
   CheckCircle2,
   Filter,
+  CreditCard,
+  Save,
+  Check,
+  QrCode,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
-import { MonthlyRecordCustomer, MonthlyRecordRow, SaleItem, BillSettings } from '../types/electron';
+import {
+  MonthlyRecordCustomer,
+  MonthlyRecordRow,
+  SaleItem,
+  BillSettings,
+  WhatsAppWebStatus,
+} from '../types/electron';
 import { ModernBillCard } from './ModernBillCard';
 import { ModernReceiptCard } from './ModernReceiptCard';
+import { WhatsAppQrModal } from './WhatsAppQrModal';
 
 type Tab = 'monthly' | 'walkin';
 
@@ -27,6 +40,22 @@ const waNumber = (raw: string) => {
   if (d.startsWith('00')) d = d.slice(2);
   if (d.startsWith('0')) d = '92' + d.slice(1);
   return d;
+};
+
+const normalizeDigits = (str: string): string => {
+  const map: Record<string, string> = {
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+    '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+  };
+  return (str || '').replace(/[۰-۹٠-٩]/g, (d) => map[d] || d);
+};
+
+const isValidPhone = (phone?: string): boolean => {
+  if (!phone) return false;
+  const clean = normalizeDigits(String(phone)).replace(/\D/g, '');
+  return clean.length >= 10 && clean.length <= 15;
 };
 
 const monthLabel = (m: string, ur: boolean) => {
@@ -47,24 +76,126 @@ export const AllRecordsView: React.FC = () => {
   const [billFor, setBillFor] = useState<{ customer: MonthlyRecordCustomer; row: MonthlyRecordRow } | null>(null);
   const [cardMode, setCardMode] = useState<'bill' | 'receipt'>('bill');
   const [billSettings, setBillSettings] = useState<BillSettings | null>(null);
+  const [showAccountEditor, setShowAccountEditor] = useState(false);
+  const [savedBadge, setSavedBadge] = useState(false);
+
+  // WhatsApp Baileys State
+  const [waStatus, setWaStatus] = useState<WhatsAppWebStatus | null>(null);
+  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [isConnectingWa, setIsConnectingWa] = useState<boolean>(false);
+
+  // Single WhatsApp sending state
+  const [sendingSingleId, setSendingSingleId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error' | 'info', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  };
+
+  const saveCustomAccount = async () => {
+    if (!billSettings) return;
+    try {
+      await window.electronAPI.saveBillSettings(billSettings);
+      setSavedBadge(true);
+      setTimeout(() => setSavedBadge(false), 2500);
+      showToast('success', ur ? 'بینک اکاؤنٹ تفصیلات محفوظ ہو گئیں' : 'Account details saved');
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      showToast('error', ur ? 'سیٹنگز محفوظ کرنے میں غلطی ہوئی' : 'Failed to save settings');
+    }
+  };
+
+  // 1. Initial Data Loading
+  const loadInitialData = useCallback(async () => {
+    if (!window.electronAPI) return;
+    try {
+      const [s, m, bs, curWa] = await Promise.all([
+        window.electronAPI.getPosSales(),
+        window.electronAPI.getMonthlyRecords(),
+        window.electronAPI.getBillSettings().catch(() => null),
+        window.electronAPI.getWhatsAppStatus().catch(() => null),
+      ]);
+      setSales(s || []);
+      setMonthly(m || []);
+      if (bs) setBillSettings(bs);
+      if (curWa) {
+        setWaStatus(curWa);
+        if (curWa.qrCodeDataUrl) setQrCodeData(curWa.qrCodeDataUrl);
+      }
+    } catch (err) {
+      console.error('Failed to load records:', err);
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      if (!window.electronAPI) return;
-      try {
-        const [s, m, bs] = await Promise.all([
-          window.electronAPI.getPosSales(),
-          window.electronAPI.getMonthlyRecords(),
-          window.electronAPI.getBillSettings().catch(() => null),
-        ]);
-        setSales(s || []);
-        setMonthly(m || []);
-        if (bs) setBillSettings(bs);
-      } catch (err) {
-        console.error('Failed to load records:', err);
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // 2. Real-time WhatsApp IPC Listeners
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const unsubQR = window.electronAPI.onWhatsAppQR((qr) => {
+      setQrCodeData(qr);
+      setIsConnectingWa(false);
+    });
+
+    const unsubStatus = window.electronAPI.onWhatsAppStatus((status) => {
+      setWaStatus(status);
+      if (status.qrCodeDataUrl) {
+        setQrCodeData(status.qrCodeDataUrl);
+      } else if (status.connected) {
+        setQrCodeData(null);
+        showToast('success', ur ? 'واٹس ایپ کامیابی کے ساتھ منسلک ہو گیا ہے!' : 'WhatsApp Connected!');
       }
-    })();
-  }, []);
+      setIsConnectingWa(status.connecting);
+    });
+
+    return () => {
+      unsubQR?.();
+      unsubStatus?.();
+    };
+  }, [ur]);
+
+  // Connect WhatsApp handler
+  const handleConnectWhatsApp = async (force = false) => {
+    if (!window.electronAPI) return;
+    setIsConnectingWa(true);
+    setShowQrModal(true);
+    try {
+      const res = await window.electronAPI.connectWhatsApp({ force });
+      if (res?.qrCodeDataUrl) {
+        setQrCodeData(res.qrCodeDataUrl);
+      }
+      if (res?.connected) {
+        setWaStatus(res);
+        setQrCodeData(null);
+      }
+    } catch (err) {
+      console.error('Failed to initiate WhatsApp connection:', err);
+      showToast('error', ur ? 'کنیکشن شروع کرنے میں مسئلہ پیش آیا' : 'Failed to connect');
+    } finally {
+      setIsConnectingWa(false);
+    }
+  };
+
+  // Disconnect WhatsApp handler
+  const handleDisconnectWhatsApp = async () => {
+    if (!window.electronAPI) return;
+    if (!confirm(ur ? 'کیا آپ واقعی واٹس ایپ منقطع کرنا چاہتے ہیں؟' : 'Disconnect WhatsApp?')) return;
+    try {
+      await window.electronAPI.disconnectWhatsApp();
+      setWaStatus({ connected: false, connecting: false });
+      setQrCodeData(null);
+      showToast('info', ur ? 'واٹس ایپ منقطع کر دیا گیا ہے' : 'WhatsApp Disconnected');
+    } catch (err) {
+      console.error('Failed to disconnect WhatsApp:', err);
+    }
+  };
 
   const q = search.trim().toLowerCase();
 
@@ -132,39 +263,70 @@ export const AllRecordsView: React.FC = () => {
     return { billed, paid, balance };
   }, [customers]);
 
-  const sendBillWhatsApp = async (customer: MonthlyRecordCustomer, row: MonthlyRecordRow, mode: 'bill' | 'receipt') => {
-    const n = waNumber(customer.phone);
-    if (!n) return alert(ur ? 'اس گاہک کا واٹس ایپ نمبر موجود نہیں' : 'This customer has no WhatsApp number');
+  // Current active month string for batch operations
+  const activeMonthStr = useMemo(() => {
+    if (monthFilter !== 'All') return monthFilter;
+    if (allMonths.length > 0) return allMonths[0];
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+  }, [monthFilter, allMonths]);
 
-    const lines = [
-      `*${billSettings?.shop_title || 'قاری ظفر اقبال ملک شاپ'}*`,
-      mode === 'bill' ? `*ماہانہ دودھ بل (MONTHLY BILL)*` : `*ادائیگی کی تصدیقی رسید (PAYMENT RECEIPT)*`,
-      `مہینہ (Month): ${monthLabel(row.month, ur)}`,
-      `گاہک (Customer): ${customer.name}`,
-      '------------------------',
-      `کل دودھ (Total milk): ${qty(row.liters)} لیٹر`,
-      `ریٹ (Rate): Rs. ${row.rate}/L`,
-      `کل رقم (Bill Amount): Rs. ${money(row.bill)}`,
-      `ادا شدہ رقم (Paid): Rs. ${money(row.paid)}`,
-      '------------------------',
-      `*باقی رقم (Balance due): Rs. ${money(row.balance)}*`,
-    ];
+  // 3. Dispatch Single Bill Image Immediately via WhatsApp
+  const handleSendBillImageNow = async (customer: MonthlyRecordCustomer, row: MonthlyRecordRow) => {
+    if (!window.electronAPI) return;
 
-    if (mode === 'bill' && row.balance > 0 && billSettings?.bank_name) {
-      lines.push('------------------------');
-      lines.push('*آن لائن بینک ٹرانسفر (Online Transfer):*');
-      lines.push(`Bank: ${billSettings.bank_name}`);
-      lines.push(`Title: ${billSettings.account_title || 'Hafiz Musab Zafar'}`);
-      lines.push(`A/C: ${billSettings.account_number || (billSettings as any)?.account_no || '0210-1234567890'}`);
-      lines.push('بل ہر ماہ کی 5 تاریخ تک ادا کریں۔ شکریہ!');
-    } else {
-      lines.push('');
-      lines.push('ادائیگی کا شکریہ! (Thank You)');
+    if (!waStatus?.connected) {
+      setShowQrModal(true);
+      if (!qrCodeData && !waStatus?.connecting) handleConnectWhatsApp();
+      return;
     }
 
-    const url = `https://wa.me/${n}?text=${encodeURIComponent(lines.join('\n'))}`;
-    if (window.electronAPI) await window.electronAPI.openExternal(url);
-    else window.open(url, '_blank');
+    if (!isValidPhone(customer.phone)) {
+      alert(ur ? 'اس گاہک کا موبائل نمبر درست نہیں ہے!' : 'Customer has no valid WhatsApp number!');
+      return;
+    }
+
+    setSendingSingleId(customer.id);
+
+    const payload = {
+      customerId: customer.id,
+      customerName: customer.name,
+      phone: customer.phone,
+      billMonth: row.month,
+      monthLabel: monthLabel(row.month, ur),
+      liters: row.liters,
+      rate: row.rate,
+      billAmount: row.bill,
+      carry: 0,
+      received: row.paid,
+      payable: row.balance,
+      accountNumber: billSettings?.account_number || '02090111954760',
+      whatsappConsent: customer.whatsapp_consent !== false,
+    };
+
+    try {
+      const res = await window.electronAPI.sendSingleBillDirect({
+        item: payload,
+        settings: billSettings,
+      });
+
+      if (res.success) {
+        showToast(
+          'success',
+          ur
+            ? `بل کی تصویر ${customer.name} کو واٹس ایپ پر بھیج دی گئی ہے!`
+            : `Bill image sent to ${customer.name}!`
+        );
+      } else {
+        showToast('error', ur ? `بل نہیں بھیجا جا سکا: ${res.error}` : `Failed: ${res.error}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to send bill:', err);
+      showToast('error', ur ? 'میسج بھیجنے میں خرابی ہوئی' : 'Error sending message');
+    } finally {
+      setSendingSingleId(null);
+    }
   };
 
   const Stat: React.FC<{ label: string; value: string; tone?: string }> = ({ label, value, tone }) => (
@@ -176,7 +338,30 @@ export const AllRecordsView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-12 max-w-7xl mx-auto text-slate-100 select-none">
-      {/* Top Header Card with Tabs & Month Filter */}
+      {/* Toast Alert */}
+      {toast && (
+        <div
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-md transition-all ${
+            toast.type === 'success'
+              ? 'bg-emerald-950/90 border-emerald-400 text-emerald-200'
+              : toast.type === 'error'
+              ? 'bg-rose-950/90 border-rose-400 text-rose-200'
+              : 'bg-cyan-950/90 border-cyan-400 text-cyan-200'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+          )}
+          <span className="font-bold text-xs">{toast.text}</span>
+          <button onClick={() => setToast(null)} className="p-1 hover:opacity-75 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Top Header Card with Tabs, WhatsApp QR Scanner, Send All & Month Filter */}
       <div className="bg-[#081028] rounded-3xl border border-blue-500/25 shadow-[0_4px_25px_rgba(0,0,0,0.35)] p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Tab Switcher */}
         <div className="flex gap-2">
@@ -204,8 +389,38 @@ export const AllRecordsView: React.FC = () => {
           </button>
         </div>
 
-        {/* Right: Month Selector & Search Filter */}
+        {/* Center / Right: WhatsApp Connection & Action Controls */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Prominent WhatsApp Connection Button / Status Badge */}
+          {waStatus?.connected ? (
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-2xl bg-[#092c23] border border-emerald-400/50 text-emerald-300 text-xs font-black shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>
+                {ur
+                  ? `واٹس ایپ منسلک ہے (${waStatus.phoneNumber || '03204815221'})`
+                  : `WhatsApp Connected (${waStatus.phoneNumber || 'Active'})`}
+              </span>
+              <button
+                type="button"
+                onClick={handleDisconnectWhatsApp}
+                title={ur ? 'واٹس ایپ منقطع کریں' : 'Disconnect WhatsApp'}
+                className="p-1 hover:bg-rose-500/20 text-rose-400 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleConnectWhatsApp}
+              className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500/25 via-emerald-500/20 to-cyan-500/25 border-2 border-amber-400 hover:border-amber-300 text-amber-300 hover:text-white font-black text-xs shadow-[0_0_20px_rgba(251,191,36,0.35)] animate-pulse hover:animate-none cursor-pointer transition-all"
+              title="Click to view QR code and connect your WhatsApp"
+            >
+              <QrCode className="w-4 h-4 text-amber-300" />
+              <span>{ur ? '📱 واٹس ایپ QR کوڈ اسکین کریں' : 'Scan WhatsApp QR'}</span>
+            </button>
+          )}
+
           {/* Prominent Month Selector */}
           <div className="flex items-center gap-1.5 bg-[#0c163b] border border-blue-500/30 rounded-2xl px-3 py-1.5 shadow-[0_0_10px_rgba(0,102,255,0.15)]">
             <Filter className="w-3.5 h-3.5 text-cyan-400" />
@@ -232,7 +447,7 @@ export const AllRecordsView: React.FC = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={ur ? 'نام یا فون سے تلاش کریں...' : 'Search by name/phone...'}
-              className="pl-9 pr-3 py-2 text-xs rounded-2xl bg-[#0c163b] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 w-full md:w-56"
+              className="pl-9 pr-3 py-2 text-xs rounded-2xl bg-[#0c163b] border border-blue-500/30 text-white focus:outline-none focus:border-cyan-400 w-full md:w-48"
             />
           </div>
         </div>
@@ -265,7 +480,7 @@ export const AllRecordsView: React.FC = () => {
                     <th className="px-3 py-3 text-right">{ur ? 'کل بل' : 'Total Bill'}</th>
                     <th className="px-3 py-3 text-right text-emerald-400">{ur ? 'کل ادا' : 'Total Paid'}</th>
                     <th className="px-3 py-3 text-right">{ur ? 'بقایا' : 'Balance'}</th>
-                    <th className="px-3 py-3 text-center w-36">{ur ? 'ایکشنز' : 'Actions'}</th>
+                    <th className="px-3 py-3 text-center w-52">{ur ? 'ایکشنز' : 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-blue-500/10">
@@ -294,35 +509,18 @@ export const AllRecordsView: React.FC = () => {
                           </td>
                           <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                             {primaryRow && (
-                              <div className="flex items-center justify-center gap-1.5">
-                                {/* Bill Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCardMode('bill');
-                                    setBillFor({ customer: c, row: primaryRow });
-                                  }}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600/30 hover:bg-blue-600 border border-blue-400/40 text-cyan-300 hover:text-white text-[11px] font-bold cursor-pointer transition-all shadow-xs"
-                                  title="View Bill"
-                                >
-                                  <FileText className="w-3 h-3" />
-                                  <span>{ur ? 'بل' : 'Bill'}</span>
-                                </button>
-
-                                {/* Receipt Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCardMode('receipt');
-                                    setBillFor({ customer: c, row: primaryRow });
-                                  }}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 border border-emerald-400/40 text-emerald-300 hover:text-white text-[11px] font-bold cursor-pointer transition-all shadow-xs"
-                                  title="View Receiving Receipt"
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  <span>{ur ? 'رسید' : 'Receipt'}</span>
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCardMode('bill');
+                                  setBillFor({ customer: c, row: primaryRow });
+                                }}
+                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-cyan-400/50 text-white text-xs font-bold cursor-pointer transition-all shadow-xs mx-auto"
+                                title={ur ? 'بل دیکھیں' : 'View Bill'}
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>{ur ? 'بل دیکھیں' : 'View Bill'}</span>
+                              </button>
                             )}
                           </td>
                         </tr>
@@ -340,7 +538,7 @@ export const AllRecordsView: React.FC = () => {
                                     <th className="text-right py-1.5 font-bold">{ur ? 'بل' : 'Bill'}</th>
                                     <th className="text-right py-1.5 font-bold text-emerald-400">{ur ? 'ادا' : 'Paid'}</th>
                                     <th className="text-right py-1.5 font-bold">{ur ? 'بقایا' : 'Balance'}</th>
-                                    <th className="w-24 text-center py-1.5">{ur ? 'کارڈ' : 'Card'}</th>
+                                    <th className="w-28 text-center py-1.5">{ur ? 'بل' : 'Bill'}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -355,28 +553,18 @@ export const AllRecordsView: React.FC = () => {
                                         Rs. {money(r.balance)}
                                       </td>
                                       <td className="py-2 text-center">
-                                        <div className="flex items-center justify-center gap-1">
-                                          <button
-                                            onClick={() => {
-                                              setCardMode('bill');
-                                              setBillFor({ customer: c, row: r });
-                                            }}
-                                            className="p-1 rounded-lg hover:bg-blue-600/30 text-cyan-400 hover:text-white"
-                                            title="Bill"
-                                          >
-                                            <FileText className="w-3.5 h-3.5" />
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              setCardMode('receipt');
-                                              setBillFor({ customer: c, row: r });
-                                            }}
-                                            className="p-1 rounded-lg hover:bg-emerald-600/30 text-emerald-400 hover:text-white"
-                                            title="Receipt"
-                                          >
-                                            <CheckCircle2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setCardMode('bill');
+                                            setBillFor({ customer: c, row: r });
+                                          }}
+                                          className="px-3 py-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-cyan-400/50 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs transition-all mx-auto"
+                                          title={ur ? 'بل دیکھیں' : 'View Bill'}
+                                        >
+                                          <FileText className="w-3.5 h-3.5" />
+                                          <span>{ur ? 'بل دیکھیں' : 'View Bill'}</span>
+                                        </button>
                                       </td>
                                     </tr>
                                   ))}
@@ -388,76 +576,59 @@ export const AllRecordsView: React.FC = () => {
                       </React.Fragment>
                     );
                   })}
-                  {customers.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
-                        {ur ? 'اس فلٹر کے لیے کوئی ماہانہ ریکارڈ موجود نہیں' : 'No monthly records found for this filter'}
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
           </div>
         </>
       ) : (
+        /* Walk-in Customers Section */
         <>
-          {/* Walk-in Summary Stat Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label={ur ? 'ریکارڈ' : 'Records'} value={String(walkIn.length)} />
-            <Stat label={ur ? 'کل دودھ' : 'Total Milk'} value={`${qty(walkInTotals.liters)} Ltr`} />
-            <Stat label={ur ? 'ادا شدہ' : 'Paid'} value={`Rs. ${money(walkInTotals.paid)}`} tone="text-emerald-400" />
+            <Stat label={ur ? 'سیلز کی تعداد' : 'Total Sales'} value={String(walkIn.length)} />
+            <Stat label={ur ? 'کل لیٹر دودھ' : 'Total Liters'} value={`${qty(walkInTotals.liters)} L`} />
+            <Stat label={ur ? 'کل رقم' : 'Total Amount'} value={`Rs. ${money(walkInTotals.amount)}`} />
             <Stat
-              label={ur ? 'بقایا' : 'Due'}
+              label={ur ? 'باقی رقم' : 'Pending Due'}
               value={`Rs. ${money(walkInTotals.due)}`}
               tone={walkInTotals.due > 0 ? 'text-rose-400' : 'text-emerald-400'}
             />
           </div>
 
-          {/* Walk-in Sales Table */}
           <div className="bg-[#081028] rounded-3xl border border-blue-500/25 shadow-[0_4px_25px_rgba(0,0,0,0.35)] overflow-hidden">
-            <div className="overflow-x-auto max-h-[65vh]">
+            <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-[#0b1437] border-b border-blue-500/20 text-[11px] uppercase tracking-wider text-slate-300 font-extrabold z-10">
-                  <tr>
-                    <th className="px-4 py-3">{ur ? 'تاریخ' : 'Date'}</th>
+                <thead>
+                  <tr className="bg-[#0b1437] border-b border-blue-500/20 text-[11px] uppercase tracking-wider text-slate-300 font-extrabold">
+                    <th className="px-3 py-3">{ur ? 'تاریخ' : 'Date'}</th>
                     <th className="px-3 py-3">{ur ? 'گاہک' : 'Customer'}</th>
-                    <th className="px-3 py-3 text-right">{ur ? 'لیٹر' : 'Ltr'}</th>
+                    <th className="px-3 py-3 text-right">{ur ? 'مقدار' : 'Quantity'}</th>
                     <th className="px-3 py-3 text-right">{ur ? 'ریٹ' : 'Rate'}</th>
-                    <th className="px-3 py-3 text-right">{ur ? 'رقم' : 'Amount'}</th>
+                    <th className="px-3 py-3 text-right">{ur ? 'کل رقم' : 'Total'}</th>
                     <th className="px-3 py-3 text-center">{ur ? 'حالت' : 'Status'}</th>
-                    <th className="px-3 py-3">{ur ? 'نوٹ' : 'Notes'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-blue-500/10">
                   {walkIn.map((s) => (
-                    <tr key={s.id} className="hover:bg-blue-600/10 transition-colors">
-                      <td className="px-4 py-3 text-slate-300 font-mono">{s.date}</td>
-                      <td className="px-3 py-3 font-black text-white">{s.customer_name || 'Walk-in'}</td>
+                    <tr key={s.id} className="hover:bg-blue-600/10">
+                      <td className="px-3 py-3 text-cyan-300 font-mono">{s.date}</td>
+                      <td className="px-3 py-3 font-black text-white">{s.customer_name || (ur ? 'واک اِن گاہک' : 'Walk-in')}</td>
                       <td className="px-3 py-3 text-right font-black text-cyan-300">{qty(s.quantity)} L</td>
-                      <td className="px-3 py-3 text-right text-slate-300">Rs. {s.rate}</td>
-                      <td className="px-3 py-3 text-right font-black text-white">Rs. {money(s.total_amount || 0)}</td>
+                      <td className="px-3 py-3 text-right">Rs. {s.rate}</td>
+                      <td className="px-3 py-3 text-right font-black text-white">Rs. {money(s.total_amount)}</td>
                       <td className="px-3 py-3 text-center">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
                             s.payment_status === 'Paid'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                           }`}
                         >
-                          {s.payment_method || (s.payment_status === 'Paid' ? 'Cash' : 'Udhaar')}
+                          {s.payment_status === 'Paid' ? (ur ? 'ادا شدہ' : 'Paid') : (ur ? 'بقایا' : 'Pending')}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-slate-400 truncate max-w-[180px]">{s.notes || '-'}</td>
                     </tr>
                   ))}
-                  {walkIn.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                        {ur ? 'اس فلٹر کے لیے کوئی واک اِن ریکارڈ موجود نہیں' : 'No walk-in records found'}
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
             </div>
@@ -465,18 +636,29 @@ export const AllRecordsView: React.FC = () => {
         </>
       )}
 
-      {/* Bill & Receiving Receipt Modal with Tabs */}
+      {/* WhatsApp QR Code Scanning Modal */}
+      <WhatsAppQrModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        waStatus={waStatus}
+        qrCodeData={qrCodeData}
+        isConnecting={isConnectingWa}
+        onRefresh={() => handleConnectWhatsApp(true)}
+        onDisconnect={handleDisconnectWhatsApp}
+      />
+
+      {/* Bill & Receipt View Modal (Wider width as requested by user) */}
       {billFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-2 md:p-3 overflow-y-auto print:static print:bg-transparent print:p-0">
-          <div className="bg-[#050d24] rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.9),0_0_30px_rgba(0,150,255,0.25)] max-w-[460px] w-full overflow-hidden border border-cyan-500/40 flex flex-col max-h-[96vh] print:max-h-none print:shadow-none print:border-none print:w-full">
-            {/* Modal Header & Mode Switcher */}
-            <div className="bg-[#081028] text-white px-4 py-3 flex items-center justify-between no-print border-b border-blue-500/20">
-              {/* Toggle Bill vs Receiving */}
-              <div className="flex items-center gap-1 bg-[#0b1437] p-1 rounded-2xl border border-blue-500/30">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 md:p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+          <div className="bg-[#081028] border-2 border-cyan-500/40 rounded-3xl max-w-4xl w-full max-h-[95vh] flex flex-col shadow-[0_0_50px_rgba(6,182,212,0.3)] overflow-hidden print:border-none print:shadow-none print:max-w-none print:w-full print:max-h-none print:rounded-none">
+            {/* Modal Header */}
+            <div className="p-3.5 px-5 bg-[#0b1437] border-b border-blue-500/20 flex items-center justify-between no-print">
+              {/* Card Mode Toggle */}
+              <div className="flex items-center gap-1.5 bg-[#081028] p-1 rounded-2xl border border-blue-500/20">
                 <button
                   type="button"
                   onClick={() => setCardMode('bill')}
-                  className={`flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     cardMode === 'bill'
                       ? 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white shadow-xs'
                       : 'text-slate-400 hover:text-white'
@@ -488,9 +670,9 @@ export const AllRecordsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setCardMode('receipt')}
-                  className={`flex items-center gap-1 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     cardMode === 'receipt'
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-xs'
+                      ? 'bg-gradient-to-r from-teal-600 to-cyan-500 text-white shadow-xs'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -501,7 +683,7 @@ export const AllRecordsView: React.FC = () => {
 
               <button
                 onClick={() => setBillFor(null)}
-                className="p-1 rounded-xl bg-slate-800 hover:bg-rose-600/40 text-slate-400 hover:text-white cursor-pointer transition-colors"
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600/40 text-slate-400 hover:text-white cursor-pointer transition-colors"
                 title="Close"
               >
                 <X className="w-4 h-4" />
@@ -509,7 +691,123 @@ export const AllRecordsView: React.FC = () => {
             </div>
 
             {/* Modal Body: Either ModernBillCard or ModernReceiptCard */}
-            <div className="p-3 space-y-3 overflow-y-auto flex-1 print:p-0 print:overflow-visible flex flex-col items-center">
+            <div className="p-3 md:p-5 space-y-3 overflow-y-auto flex-1 print:p-0 print:overflow-visible flex flex-col items-center">
+              {/* Account Number & Bank Quick Editor Toolbar (No-Print) */}
+              <div className="w-full no-print bg-[#0c163b] border border-emerald-500/30 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowAccountEditor(!showAccountEditor)}
+                    className="flex items-center gap-2 text-xs font-bold text-emerald-300 hover:text-emerald-200 transition-colors cursor-pointer"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>
+                      {ur
+                        ? 'اکاؤنٹ نمبر اور بینک تفصیلات تبدیل کریں'
+                        : 'Edit Account & Bank Details'}
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-full text-emerald-300 border border-emerald-500/30">
+                      {showAccountEditor ? 'بند کریں' : 'تبدیل کریں ✏️'}
+                    </span>
+                  </button>
+
+                  <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <span>اکاؤنٹ نمبر:</span>
+                    <b className="font-mono text-emerald-400">
+                      {billSettings?.account_number || '02090111954760'}
+                    </b>
+                  </div>
+                </div>
+
+                {showAccountEditor && (
+                  <div className="pt-2 border-t border-blue-500/20 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {ur ? 'اکاؤنٹ نمبر / IBAN:' : 'Account Number:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={billSettings?.account_number || ''}
+                        onChange={(e) =>
+                          setBillSettings({
+                            ...(billSettings || {
+                              shop_title: 'قاری ظفر اقبال ملک شاپ',
+                              owner_name: 'حافظ مصعب ظفر',
+                              phone: '0320-4815221',
+                              bank_name: 'میزان بینک',
+                              account_title: 'حافظ مصعب ظفر',
+                              account_number: '',
+                            }),
+                            account_number: e.target.value,
+                          })
+                        }
+                        dir="ltr"
+                        placeholder="02090111954760"
+                        className="w-full px-3 py-1.5 rounded-xl bg-[#081028] border border-blue-500/40 text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {ur ? 'بینک کا نام / اکاؤنٹ:' : 'Bank Name:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={billSettings?.bank_name || ''}
+                        onChange={(e) =>
+                          setBillSettings({
+                            ...(billSettings || {
+                              shop_title: 'قاری ظفر اقبال ملک شاپ',
+                              owner_name: 'حافظ مصعب ظفر',
+                              phone: '0320-4815221',
+                              bank_name: '',
+                              account_title: 'حافظ مصعب ظفر',
+                              account_number: '02090111954760',
+                            }),
+                            bank_name: e.target.value,
+                          })
+                        }
+                        placeholder="میزان بینک"
+                        className="w-full px-3 py-1.5 rounded-xl bg-[#081028] border border-blue-500/40 text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-400 mb-1">
+                        {ur ? 'اکاؤنٹ ٹائٹل:' : 'Account Title:'}
+                      </label>
+                      <input
+                        type="text"
+                        value={billSettings?.account_title || ''}
+                        onChange={(e) =>
+                          setBillSettings({
+                            ...(billSettings || {
+                              shop_title: 'قاری ظفر اقبال ملک شاپ',
+                              owner_name: 'حافظ مصعب ظفر',
+                              phone: '0320-4815221',
+                              bank_name: 'میزان بینک',
+                              account_title: '',
+                              account_number: '02090111954760',
+                            }),
+                            account_title: e.target.value,
+                          })
+                        }
+                        placeholder="حافظ مصعب ظفر"
+                        className="w-full px-3 py-1.5 rounded-xl bg-[#081028] border border-blue-500/40 text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={saveCustomAccount}
+                        className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md cursor-pointer transition-colors"
+                      >
+                        {savedBadge ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                        <span>{savedBadge ? (ur ? 'محفوظ ہو گیا!' : 'Saved!') : (ur ? 'محفوظ کریں' : 'Save')}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {cardMode === 'bill' ? (
                 <ModernBillCard
                   customerId={billFor.customer.id}
@@ -527,12 +825,16 @@ export const AllRecordsView: React.FC = () => {
                   settings={{
                     shop_title: billSettings?.shop_title || 'قاری ظفر اقبال ملک شاپ',
                     owner_name: billSettings?.owner_name || 'حافظ مصعب ظفر',
-                    phone: billSettings?.phone || '0300-1234567',
-                    bank_name: billSettings?.bank_name || 'Faysal Bank',
-                    account_title: billSettings?.account_title || 'Hafiz Musab Zafar',
-                    account_number: billSettings?.account_number || (billSettings as any)?.account_no || '0210-1234567890',
+                    phone: billSettings?.phone || '0320-4815221',
+                    bank_name: billSettings?.bank_name || 'میزان بینک',
+                    account_title: billSettings?.account_title || 'حافظ مصعب ظفر',
+                    account_number: billSettings?.account_number || (billSettings as any)?.account_no || '02090111954760',
                   }}
+                  accountNumber={billSettings?.account_number || '02090111954760'}
+                  bankName={billSettings?.bank_name || 'میزان بینک'}
+                  accountTitle={billSettings?.account_title || 'حافظ مصعب ظفر'}
                   ur={ur}
+                  onEditAccount={() => setShowAccountEditor(true)}
                 />
               ) : (
                 <ModernReceiptCard
@@ -550,36 +852,48 @@ export const AllRecordsView: React.FC = () => {
                   settings={{
                     shop_title: billSettings?.shop_title || 'قاری ظفر اقبال ملک شاپ',
                     owner_name: billSettings?.owner_name || 'حافظ مصعب ظفر',
-                    phone: billSettings?.phone || '0300-1234567',
+                    phone: billSettings?.phone || '0320-4815221',
+                    bank_name: billSettings?.bank_name || 'میزان بینک',
+                    account_title: billSettings?.account_title || 'حافظ مصعب ظفر',
+                    account_number: billSettings?.account_number || '02090111954760',
                   }}
+                  accountNumber={billSettings?.account_number || '02090111954760'}
+                  bankName={billSettings?.bank_name || 'میزان بینک'}
+                  accountTitle={billSettings?.account_title || 'حافظ مصعب ظفر'}
                   ur={ur}
+                  onEditAccount={() => setShowAccountEditor(true)}
                 />
               )}
 
-              {/* Action Buttons: Print, WhatsApp, Close */}
-              <div className="grid grid-cols-2 gap-2.5 no-print w-full pt-1">
+              {/* Action Buttons: Print, WhatsApp Image Send, Close */}
+              <div className="grid grid-cols-2 gap-3 no-print w-full pt-1">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-[0_0_15px_rgba(0,102,255,0.35)] cursor-pointer transition-all"
+                  className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all"
                 >
-                  <Printer className="w-3.5 h-3.5" />
+                  <Printer className="w-4 h-4" />
                   <span>{cardMode === 'bill' ? (ur ? 'پرنٹ بل' : 'Print Bill') : (ur ? 'پرنٹ رسید' : 'Print Receipt')}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => sendBillWhatsApp(billFor.customer, billFor.row, cardMode)}
-                  className="flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-[0_0_15px_rgba(16,185,129,0.35)] cursor-pointer transition-all"
+                  onClick={() => handleSendBillImageNow(billFor.customer, billFor.row)}
+                  disabled={sendingSingleId === billFor.customer.id}
+                  className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all disabled:opacity-50"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>{ur ? 'واٹس ایپ' : 'WhatsApp'}</span>
+                  {sendingSingleId === billFor.customer.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  <span>{ur ? '📱 واٹس ایپ پر تصویر بھیجیں' : 'Send Image via WhatsApp'}</span>
                 </button>
               </div>
 
               <button
                 type="button"
                 onClick={() => setBillFor(null)}
-                className="w-full py-2 rounded-2xl bg-[#0b1437] hover:bg-slate-800 border border-blue-500/20 text-slate-300 text-xs font-bold cursor-pointer print:hidden transition-colors"
+                className="w-full py-2.5 rounded-2xl bg-[#0b1437] hover:bg-slate-800 border border-blue-500/20 text-slate-300 text-xs font-bold cursor-pointer print:hidden transition-colors"
               >
                 {ur ? 'بند کریں' : 'Close'}
               </button>

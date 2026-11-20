@@ -97,8 +97,42 @@ var api = {
   restoreDbBackup: () => import_electron.ipcRenderer.invoke("backup:restoreDb"),
   exportJsonBackup: () => import_electron.ipcRenderer.invoke("backup:exportJson"),
   exportCsvBackup: () => import_electron.ipcRenderer.invoke("backup:exportCsv"),
+  connectWhatsApp: (payload) => import_electron.ipcRenderer.invoke("whatsapp:connect", payload),
   getWhatsAppStatus: () => import_electron.ipcRenderer.invoke("whatsapp:getStatus"),
   disconnectWhatsApp: () => import_electron.ipcRenderer.invoke("whatsapp:disconnect"),
+  enqueueWhatsAppBills: (payload) => import_electron.ipcRenderer.invoke("whatsapp:enqueueBills", payload),
+  pauseWhatsAppQueue: () => import_electron.ipcRenderer.invoke("whatsapp:pauseQueue"),
+  resumeWhatsAppQueue: (payload) => import_electron.ipcRenderer.invoke("whatsapp:resumeQueue", payload),
+  clearWhatsAppQueue: (payload) => import_electron.ipcRenderer.invoke("whatsapp:clearQueue", payload),
+  clearFailedWhatsAppQueue: (payload) => import_electron.ipcRenderer.invoke("whatsapp:clearFailedQueue", payload),
+  clearWhatsAppQueueItem: (payload) => import_electron.ipcRenderer.invoke("whatsapp:clearQueueItem", payload),
+  retryFailedWhatsAppQueue: (payload) => import_electron.ipcRenderer.invoke("whatsapp:retryFailed", payload),
+  getWhatsAppQueueStatus: (month) => import_electron.ipcRenderer.invoke("whatsapp:getQueueStatus", month),
+  getWhatsAppQueueItems: (month) => import_electron.ipcRenderer.invoke("whatsapp:getQueueItems", month),
+  getWhatsAppBillStatusMap: (month) => import_electron.ipcRenderer.invoke("whatsapp:getBillStatusMap", month),
+  setWhatsAppSpeedPreset: (preset) => import_electron.ipcRenderer.invoke("whatsapp:setSpeedPreset", preset),
+  sendSingleBillDirect: (payload) => import_electron.ipcRenderer.invoke("whatsapp:sendSingleBillDirect", payload),
+  onWhatsAppQR: (callback) => {
+    const listener = (_e, qr) => callback(qr);
+    import_electron.ipcRenderer.on("whatsapp:qr", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("whatsapp:qr", listener);
+    };
+  },
+  onWhatsAppStatus: (callback) => {
+    const listener = (_e, status) => callback(status);
+    import_electron.ipcRenderer.on("whatsapp:status", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("whatsapp:status", listener);
+    };
+  },
+  onWhatsAppQueueProgress: (callback) => {
+    const listener = (_e, progress) => callback(progress);
+    import_electron.ipcRenderer.on("whatsapp:queue-progress", listener);
+    return () => {
+      import_electron.ipcRenderer.removeListener("whatsapp:queue-progress", listener);
+    };
+  },
   getVehicles: () => import_electron.ipcRenderer.invoke("vehicles:list"),
   addVehicle: (v) => import_electron.ipcRenderer.invoke("vehicles:add", v),
   deleteVehicle: (id) => import_electron.ipcRenderer.invoke("vehicles:delete", id),

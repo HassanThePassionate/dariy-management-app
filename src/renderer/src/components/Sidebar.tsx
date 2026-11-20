@@ -28,7 +28,6 @@ export type PageId =
   | 'fleet-expenses'
   | 'ghee'
   | 'shopper'
-  | 'monthly-bills'
   | 'payments'
   | 'settings';
 
@@ -97,11 +96,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'shopper',
       label: t.shopperStock,
       icon: <Package className="w-5 h-5" />,
-    },
-    {
-      id: 'monthly-bills',
-      label: language === 'ur' ? 'واٹس ایپ بلز' : 'WhatsApp Bills',
-      icon: <MessageSquare className="w-5 h-5" />,
     },
     {
       id: 'settings',

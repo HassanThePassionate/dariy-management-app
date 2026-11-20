@@ -17,6 +17,28 @@ import {
   sendSingleCustomerBill,
   getLocalWhatsAppBillLogs,
 } from '../cloud/whatsappClient';
+import {
+  connectToWhatsApp,
+  disconnectWhatsApp,
+  getWhatsAppStatus,
+} from '../whatsapp/baileysManager';
+import {
+  enqueueBills,
+  startQueueWorker,
+  pauseQueueWorker,
+  resumeQueueWorker,
+  clearQueue,
+  clearFailedQueueItems,
+  clearQueueItem,
+  retryFailedQueueItems,
+  getQueueStatus,
+  getQueueItemsForMonth,
+  getCustomerBillStatusMap,
+  sendDirectSingleBill,
+  setQueueSpeedPreset,
+  broadcastQueueProgress,
+  SpeedPreset,
+} from '../whatsapp/queueManager';
 import { generateBillImage } from '../cloud/billImageGenerator';
 
 export function registerIpcHandlers(): void {
@@ -542,9 +564,12 @@ export function registerIpcHandlers(): void {
       db.prepare('DELETE FROM received_payments WHERE customer_id = ?').run(id);
       db.prepare('DELETE FROM khata_opening_override WHERE customer_id = ?').run(id);
       db.prepare('DELETE FROM customer_month_rates WHERE customer_id = ?').run(id);
+      db.prepare('DELETE FROM whatsapp_queue WHERE customer_id = ?').run(id);
+      db.prepare('DELETE FROM whatsapp_bill_logs WHERE customer_id = ?').run(id);
       db.prepare('DELETE FROM customers WHERE id = ?').run(id);
     });
     run();
+    broadcastQueueProgress();
     return { success: true };
   });
 
@@ -557,6 +582,8 @@ export function registerIpcHandlers(): void {
     const delRecv = db.prepare('DELETE FROM received_payments WHERE customer_id = ?');
     const delOver = db.prepare('DELETE FROM khata_opening_override WHERE customer_id = ?');
     const delRates = db.prepare('DELETE FROM customer_month_rates WHERE customer_id = ?');
+    const delWaQueue = db.prepare('DELETE FROM whatsapp_queue WHERE customer_id = ?');
+    const delWaLogs = db.prepare('DELETE FROM whatsapp_bill_logs WHERE customer_id = ?');
     const delCust = db.prepare('DELETE FROM customers WHERE id = ?');
     const remove = db.transaction((list: number[]) => {
       let count = 0;
@@ -565,11 +592,14 @@ export function registerIpcHandlers(): void {
         delRecv.run(id);
         delOver.run(id);
         delRates.run(id);
+        delWaQueue.run(id);
+        delWaLogs.run(id);
         count += delCust.run(id).changes;
       }
       return count;
     });
     const deleted = remove(ids);
+    broadcastQueueProgress();
     return { success: true, deleted };
   });
 
@@ -682,8 +712,17 @@ export function registerIpcHandlers(): void {
         payload.customerId,
         payload.month
       );
+      db.prepare('DELETE FROM whatsapp_queue WHERE customer_id = ? AND bill_month = ?').run(
+        payload.customerId,
+        payload.month
+      );
+      db.prepare('DELETE FROM whatsapp_bill_logs WHERE customer_id = ? AND bill_month = ?').run(
+        payload.customerId,
+        payload.month
+      );
     });
     run();
+    broadcastQueueProgress();
     return { success: true };
   });
 
@@ -1766,20 +1805,88 @@ export function registerIpcHandlers(): void {
     }
   });
 
-  // 17. Meta WhatsApp Cloud API & Billing
+  // 17. WhatsApp Web QR Connection & Safe Queue System
+  ipcMain.handle('whatsapp:connect', async (_e, payload?: { force?: boolean }) => {
+    return connectToWhatsApp(payload?.force || false);
+  });
+
+  ipcMain.handle('whatsapp:disconnect', async () => {
+    return disconnectWhatsApp();
+  });
+
   ipcMain.handle('whatsapp:getStatus', async () => {
-    return getWhatsAppCloudStatus();
+    return getWhatsAppStatus();
   });
 
   ipcMain.handle('whatsapp:getCloudStatus', async () => {
     return getWhatsAppCloudStatus();
   });
 
+  ipcMain.handle('whatsapp:enqueueBills', async (_e, payload: { items: any[]; speedPreset?: SpeedPreset; force?: boolean }) => {
+    return enqueueBills(payload.items, payload.speedPreset || 'safe_10m', payload.force || false);
+  });
+
+  ipcMain.handle('whatsapp:pauseQueue', async () => {
+    pauseQueueWorker();
+    return { success: true };
+  });
+
+  ipcMain.handle('whatsapp:resumeQueue', async (_e, payload?: { month?: string }) => {
+    resumeQueueWorker(payload?.month);
+    return { success: true };
+  });
+
+  ipcMain.handle('whatsapp:clearQueue', async (_e, payload?: { month?: string; scope?: 'all' | 'queued' | 'failed' }) => {
+    return clearQueue(payload?.month, payload?.scope || 'all');
+  });
+
+  ipcMain.handle('whatsapp:clearFailedQueue', async (_e, payload?: { month?: string }) => {
+    return clearFailedQueueItems(payload?.month);
+  });
+
+  ipcMain.handle('whatsapp:clearQueueItem', async (_e, payload: { customerId: number; month?: string }) => {
+    return clearQueueItem(payload.customerId, payload?.month);
+  });
+
+  ipcMain.handle('whatsapp:retryFailed', async (_e, payload?: { month?: string }) => {
+    return retryFailedQueueItems(payload?.month);
+  });
+
+  ipcMain.handle('whatsapp:getQueueStatus', async (_e, month?: string) => {
+    return getQueueStatus(month);
+  });
+
+  ipcMain.handle('whatsapp:getBillStatusMap', async (_e, month: string) => {
+    return getCustomerBillStatusMap(month);
+  });
+
+  ipcMain.handle('whatsapp:getQueueItems', async (_e, month: string) => {
+    return getQueueItemsForMonth(month);
+  });
+
+  ipcMain.handle('whatsapp:setSpeedPreset', async (_e, preset: SpeedPreset) => {
+    setQueueSpeedPreset(preset);
+    return { success: true };
+  });
+
+  ipcMain.handle('whatsapp:sendSingleBillDirect', async (_e, payload: { item: any; settings: any }) => {
+    return sendDirectSingleBill(payload.item, payload.settings);
+  });
+
   ipcMain.handle('whatsapp:sendSingleBill', async (_e, payload: { item: any; settings: any; force?: boolean }) => {
+    const waStatus = getWhatsAppStatus();
+    if (waStatus.connected) {
+      return sendDirectSingleBill(payload.item, payload.settings);
+    }
     return sendSingleCustomerBill(payload.item, payload.settings, payload.force);
   });
 
   ipcMain.handle('whatsapp:getLogs', async (_e, month: string) => {
+    // Return queue records for the month if available, else bill logs
+    const queueItems = getQueueItemsForMonth(month);
+    if (queueItems && queueItems.length > 0) {
+      return queueItems;
+    }
     return getLocalWhatsAppBillLogs(month);
   });
 
@@ -1790,10 +1897,6 @@ export function registerIpcHandlers(): void {
       payload.consent ? null : new Date().toISOString(),
       payload.customerId
     );
-    return { success: true };
-  });
-
-  ipcMain.handle('whatsapp:disconnect', async () => {
     return { success: true };
   });
 

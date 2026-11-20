@@ -236,7 +236,7 @@ export function setupSchema(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_daily_stock_records_date ON daily_stock_records(date)');
   db.exec(`
     INSERT OR IGNORE INTO bill_settings (id, shop_title, owner_name, phone, bank_name, account_title, account_number)
-    VALUES (1, 'قاری ظفر اقبال ملک شاپ', 'حافظ مصعب ظفر', '+92 321 0001168', 'میزان بینک', 'حافظ مصعب ظفر', '02090111954760')
+    VALUES (1, 'قاری ظفر ملک شاپ', 'حافظ مصعب ظفر', '+92 321 0001168', 'میزان بینک', 'حافظ مصعب ظفر', '02090111954760')
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_milk_entries_customer ON milk_entries(customer_id)');
   console.log('[SQLite] Core tables verified/created successfully.');
@@ -372,6 +372,40 @@ function migrateCustomerColumns(): void {
     CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_month ON whatsapp_bill_logs(bill_month);
     CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_cust ON whatsapp_bill_logs(customer_id);
     CREATE INDEX IF NOT EXISTS idx_wa_bill_logs_status ON whatsapp_bill_logs(status);
+
+    -- WhatsApp persistent dispatch queue with anti-ban rate pacing
+    CREATE TABLE IF NOT EXISTS whatsapp_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      bill_month TEXT NOT NULL,
+      month_label TEXT,
+      liters REAL DEFAULT 0,
+      rate REAL DEFAULT 0,
+      bill_amount REAL DEFAULT 0,
+      carry REAL DEFAULT 0,
+      received REAL DEFAULT 0,
+      payable REAL DEFAULT 0,
+      account_number TEXT,
+      message_text TEXT,
+      image_path TEXT,
+      status TEXT DEFAULT 'queued',
+      scheduled_at DATETIME,
+      sent_at DATETIME,
+      delivered_at DATETIME,
+      message_id TEXT,
+      error_message TEXT,
+      retry_count INTEGER DEFAULT 0,
+      speed_preset TEXT DEFAULT 'safe_10m',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(customer_id, bill_month)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_wa_queue_status ON whatsapp_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_wa_queue_month ON whatsapp_queue(bill_month);
+    CREATE INDEX IF NOT EXISTS idx_wa_queue_cust ON whatsapp_queue(customer_id);
   `);
 
   // Backfill missing / duplicate sort_order values by current name ordering

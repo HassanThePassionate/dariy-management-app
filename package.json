@@ -25,14 +25,17 @@
   "author": "Qari Zafar Milk Shop",
   "license": "ISC",
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "better-sqlite3": "^13.1.1",
     "lucide-react": "^1.72.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
@@ -64,10 +67,22 @@
       "buildResources": "build"
     },
     "extraResources": [
-      { "from": "build/icon.ico", "to": "icon.ico" },
-      { "from": "public/logo.png", "to": "logo.png" },
-      { "from": "public/icon.ico", "to": "public/icon.ico" },
-      { "from": "public/logo.png", "to": "public/logo.png" }
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "public/logo.png",
+        "to": "logo.png"
+      },
+      {
+        "from": "public/icon.ico",
+        "to": "public/icon.ico"
+      },
+      {
+        "from": "public/logo.png",
+        "to": "public/logo.png"
+      }
     ],
     "files": [
       "dist/**/*",
@@ -82,7 +97,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"
@@ -97,7 +114,9 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
-      "installerLanguages": ["en_US"],
+      "installerLanguages": [
+        "en_US"
+      ],
       "language": "1033",
       "deleteAppDataOnUninstall": false
     }

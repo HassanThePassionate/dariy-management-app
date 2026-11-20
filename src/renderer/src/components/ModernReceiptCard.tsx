@@ -1,11 +1,13 @@
 import React from 'react';
-import { Phone, FileText, CheckCircle2, ThumbsUp, Coins, Receipt } from 'lucide-react';
+import './receipt-card.css';
 import logoUrl from '../assets/logo.png';
+import { ThankYouScriptGraphic } from './ThankYouScriptGraphic';
 
 export interface ModernReceiptCardProps {
   receiptNumber?: string;
   customerName: string;
   phone?: string;
+  address?: string;
   monthLabel: string;
   issueDateStr?: string;
   currentTimeStr?: string;
@@ -16,14 +18,22 @@ export interface ModernReceiptCardProps {
   totalBill?: number;
   paidNow: number;
   totalReceived?: number;
-  remaining: number;
+  remaining?: number;
   billNo?: number | string;
-  settings: {
+  accountNumber?: string;
+  bankName?: string;
+  accountTitle?: string;
+  paymentMethod?: string;
+  settings?: {
     shop_title: string;
     owner_name: string;
     phone: string;
+    bank_name?: string;
+    account_title?: string;
+    account_number?: string;
   };
   ur?: boolean;
+  onEditAccount?: () => void;
 }
 
 const money = (n: number | undefined | null) => {
@@ -38,229 +48,203 @@ const qty = (n: number | undefined | null) => {
 
 export const ModernReceiptCard: React.FC<ModernReceiptCardProps> = ({
   receiptNumber = '28',
-  customerName = 'احمد علی',
+  customerName = 'کاظم',
   phone,
+  address,
   monthLabel = 'اگست 2026',
+  issueDateStr,
+  currentTimeStr,
   rate = 240,
-  liters = 80,
-  carry = 140,
-  paidNow = 19340,
+  liters = 0,
+  carry = 0,
+  totalBill,
+  paidNow = 0,
   totalReceived,
   remaining = 0,
   billNo = receiptNumber,
+  accountNumber: customAccountNo,
+  bankName: customBankName,
+  accountTitle: customAccountTitle,
+  paymentMethod = 'نقد / آن لائن (Cash / Online)',
   settings,
+  ur = true,
+  onEditAccount,
 }) => {
   const shopTitle = settings?.shop_title || 'قاری ظفر اقبال ملک شاپ';
   const ownerName = settings?.owner_name || 'حافظ مصعب ظفر';
-  const contactPhone = settings?.phone || '0300-1234567';
+  const bankName = customBankName || settings?.bank_name || 'میزان بینک';
+  const accountTitle = customAccountTitle || settings?.account_title || 'حافظ مصعب ظفر';
+  const accountNumber = customAccountNo || settings?.account_number || '02090111954760';
 
-  const milkAmount = Math.round((liters || 80) * (rate || 240));
-  const effectivePaid = paidNow > 0 ? paidNow : (totalReceived || 19340);
+  const milkAmount = Math.round((liters || 0) * (rate || 0));
+  const calcTotalBill =
+    typeof totalBill === 'number' && Number.isFinite(totalBill)
+      ? totalBill
+      : milkAmount + (carry || 0);
+
+  const effectivePaid = paidNow > 0 ? paidNow : (totalReceived || 0);
+  const calcTotalReceived =
+    typeof totalReceived === 'number' && Number.isFinite(totalReceived)
+      ? totalReceived
+      : effectivePaid;
+
+  const calcRemaining =
+    typeof remaining === 'number' && Number.isFinite(remaining)
+      ? remaining
+      : Math.max(0, calcTotalBill - calcTotalReceived);
 
   return (
-    <div
-      id="print-receipt"
-      dir="rtl"
-      className="printable-bill mx-auto shadow-2xl print:shadow-none select-none text-right font-sans relative overflow-hidden"
-      style={{
-        width: '430px',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-        backgroundColor: '#101D35',
-        backgroundImage: 'linear-gradient(180deg, #101D35 0%, #0C1628 100%)',
-        borderRadius: '26px',
-        border: '2px solid rgba(57, 201, 216, 0.45)',
-        boxShadow: '0 12px 35px rgba(0, 0, 0, 0.5), 0 0 1px rgba(57, 201, 216, 0.35)',
-        color: '#F4F3ED',
-        padding: '18px 16px 18px',
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
-      {/* Top Header: Authentic Logo + Milk Graphic + Shop Name & Subtitle */}
-      <div className="relative pb-1">
-        <div className="flex items-center justify-between gap-2.5">
-          {/* Left: Authentic Shop Logo & Milk Bottle */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Logo */}
-            <div className="w-14 h-14 rounded-2xl bg-[#192B48]/90 p-1 border border-[#E9B83F]/50 shadow-md flex items-center justify-center">
-              <img
-                src={logoUrl}
-                alt={shopTitle}
-                className="w-full h-full object-contain select-none"
-              />
-            </div>
-            {/* Milk Bottle Graphic */}
-            <div className="w-10 h-14 flex items-center justify-center">
-              <svg viewBox="0 0 64 64" className="w-10 h-12 filter drop-shadow-[0_2px_6px_rgba(57,201,216,0.35)]" fill="none">
-                <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#39C9D8" strokeWidth="1.5" />
-                <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fillOpacity="0.95" stroke="#39C9D8" strokeWidth="2" />
-                <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#39C9D8" fillOpacity="0.25" />
-                <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fillOpacity="0.9" stroke="#39C9D8" strokeWidth="1.5" />
-              </svg>
-            </div>
-          </div>
+    <div id="print-receipt" className="printable-bill modern-dark-slip receipt-theme">
+      {/* Outer Glow & Double Border Frame */}
+      <div className="dark-slip-inner-frame">
+        {/* Top Header Section */}
+        <div className="dark-slip-header">
+          {/* Bismillah */}
+          <div className="dark-slip-bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
 
-          {/* Right: Shop Name & Owner Pill with Golden Accents */}
-          <div className="text-right flex-1 min-w-0 pr-1">
-            <h1 className="text-2xl sm:text-[25px] font-black text-[#F4F3ED] tracking-wide font-urdu leading-tight truncate">
-              {shopTitle}
-            </h1>
-            <div className="flex items-center justify-end gap-2 mt-1.5">
-              <div className="h-[1.5px] w-7 bg-gradient-to-r from-transparent to-[#E9B83F]"></div>
-              <div className="px-3.5 py-0.5 rounded-full border border-[#E9B83F]/80 bg-[#192B48]/95 shadow-sm">
-                <span className="text-xs font-bold text-[#E9B83F] font-urdu">{ownerName}</span>
+          {/* Title Row with Logo */}
+          <div className="dark-slip-title-row">
+            <div className="dark-slip-logo-badge" title={shopTitle}>
+              <img src={logoUrl} alt={shopTitle} className="dark-slip-logo-img" />
+            </div>
+
+            <div className="dark-slip-brand">
+              <h1 className="dark-slip-shop-title">{shopTitle}</h1>
+              <div className="dark-slip-subtitle">
+                پروپرائٹر: <b>{ownerName}</b> • معیار، اعتماد اور خالص دودھ کا بااعتماد مرکز
               </div>
-              <div className="h-[1.5px] w-7 bg-gradient-to-l from-transparent to-[#E9B83F]"></div>
+            </div>
+
+            <div className="dark-slip-badge receipt-badge">
+              <span className="badge-ur">رسید وصولی رقم</span>
+              <span className="badge-en">Payment Receipt</span>
             </div>
           </div>
         </div>
 
-        {/* Prominent Receipt Pill Badge: ادائیگی کی رسید */}
-        <div className="mt-2.5 mx-auto max-w-[270px] py-1.5 px-4 rounded-full border-2 border-[#39C9D8] bg-[#192B48] shadow-[0_2px_12px_rgba(57,201,216,0.3)] flex items-center justify-center gap-2">
-          <Receipt className="w-4 h-4 text-[#39C9D8]" />
-          <span className="text-base font-black text-[#F4F3ED] font-urdu tracking-wider">ادائیگی کی رسید</span>
-        </div>
-      </div>
-
-      {/* Box 1: Mobile Number */}
-      <div className="mt-2 p-2 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2 text-[#F4F3ED] font-black font-mono text-base tracking-wider" dir="ltr">
-          <div className="w-7 h-7 rounded-full bg-[#E9B83F]/15 border border-[#E9B83F] flex items-center justify-center text-[#E9B83F]">
-            <Phone className="w-3.5 h-3.5" />
+        {/* 2. Mobile Numbers Box (Matching the paper slip) */}
+        <div className="dark-slip-mobile-box">
+          <div className="mobile-box-label">
+            <span>Mobile No:</span>
           </div>
-          <span>{contactPhone}</span>
-        </div>
-        <div className="border-r border-[#39C9D8]/30 pr-3 mr-1">
-          <span className="text-xs font-bold text-[#B7C1D0] font-urdu">موبائل نمبر:</span>
-        </div>
-      </div>
-
-      {/* Box 2: Bill Number, Month & Customer Name */}
-      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] grid grid-cols-2 gap-2 items-center shadow-sm">
-        {/* Left Column: Bill No & Month */}
-        <div className="flex items-center gap-2 border-l border-[#39C9D8]/30 pl-2">
-          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/50 flex items-center justify-center text-[#39C9D8] shrink-0">
-            <FileText className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-[#B7C1D0]">
-              بل نمبر: <span className="text-lg font-black text-[#F4F3ED] font-mono">{billNo}</span>
+          <div className="mobile-box-grid">
+            <div className="mobile-row">
+              <span className="mobile-num">0300-8440710</span>
+              <span className="mobile-sep">,</span>
+              <span className="mobile-num">0320-4815221</span>
             </div>
-            <div className="text-[10px] text-[#39C9D8] font-bold">{monthLabel}</div>
-          </div>
-        </div>
-
-        {/* Right Column: Customer Name */}
-        <div className="text-right pr-2">
-          <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">بل بنام:</div>
-          <div className="text-xl font-black text-[#F4F3ED] font-urdu truncate">{customerName}</div>
-        </div>
-      </div>
-
-      {/* Box 3: Rate and Total Milk */}
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {/* Rate (Left) */}
-        <div className="p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
-          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/40 flex items-center justify-center text-[#39C9D8] shrink-0">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#39C9D8]/15 text-[#39C9D8]" stroke="currentColor" strokeWidth="1.5">
-              <path d="M6 3h12l-1.5 17a2 2 0 0 1-2 1.8H9.5a2 2 0 0 1-2-1.8L6 3z" />
-              <path d="M7 9c2 1 4 1 5 0s3-1 5 0" stroke="#39C9D8" strokeWidth="1.5" />
-            </svg>
-          </div>
-          <div className="text-right">
-            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">فی لیٹر ریٹ:</div>
-            <div className="text-base font-black text-[#F4F3ED] font-mono">
-              {rate} <span className="text-xs font-urdu text-[#39C9D8]">روپے</span>
+            <div className="mobile-row">
+              <span className="mobile-num">0300-9416564</span>
+              <span className="mobile-sep">,</span>
+              <span className="mobile-num">0321-4815221</span>
             </div>
           </div>
         </div>
 
-        {/* Total Milk (Right) */}
-        <div className="p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
-          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#39C9D8]/40 flex items-center justify-center text-[#39C9D8] shrink-0">
-            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#39C9D8]/15 text-[#39C9D8]" stroke="currentColor" strokeWidth="1.5">
-              <path d="M9 2h6v3H9z" />
-              <path d="M8 5h8l3 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V10l3-5z" />
-              <path d="M19 10a3 3 0 0 1 3 3v2a3 3 0 0 1-3 3" />
-            </svg>
+        {/* 3. Customer & Receipt Number Box */}
+        <div className="dark-slip-customer-section">
+          {/* Left: Receipt / Account Box */}
+          <div className="dark-slip-account-badge receipt-badge-box" title="رسید نمبر">
+            <div className="badge-box-label">رسید نمبر</div>
+            <div className="badge-box-num">#{receiptNumber}</div>
           </div>
-          <div className="text-right">
-            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">کل دودھ:</div>
-            <div className="text-base font-black text-[#39C9D8] font-mono">
-              {qty(liters)} <span className="text-xs font-urdu text-[#F4F3ED]">لیٹر</span>
+
+          {/* Right: Customer & Date Meta */}
+          <div className="dark-slip-customer-meta">
+            <div className="customer-meta-row">
+              <span className="meta-label">محترم گاہک:</span>
+              <span className="meta-val customer-name">{customerName}</span>
+              {phone && (
+                <span className="meta-phone" dir="ltr">
+                  ({phone})
+                </span>
+              )}
+            </div>
+
+            <div className="customer-meta-row">
+              <span className="meta-label">ماہ وسال:</span>
+              <span className="meta-val month-val">{monthLabel}</span>
+              <span className="meta-date">
+                [تاریخ: {issueDateStr || new Date().toLocaleDateString(ur ? 'ur-PK' : 'en-GB')}]
+              </span>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Box 4: Previous Balance & Milk Amount */}
-      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] grid grid-cols-2 gap-2 items-center shadow-sm">
-        {/* Previous Balance (Left) */}
-        <div className="flex items-center gap-2 border-l border-[#39C9D8]/30 pl-2">
-          <div className="w-8 h-8 rounded-xl bg-[#101D35] border border-[#E9B83F]/50 flex items-center justify-center text-[#E9B83F] shrink-0">
-            <Coins className="w-4 h-4" />
+        {/* 4. Payment Breakdown Grid (Colorful Dark Pills) */}
+        <div className="dark-slip-calc-grid">
+          {/* Row 1: Total Bill & Paid Now */}
+          <div className="calc-pill calc-milk-amount">
+            <span className="calc-label">کل واجب الادا بل:</span>
+            <span className="calc-val">Rs. {money(calcTotalBill)}</span>
           </div>
-          <div>
-            <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">سابقہ رقم:</div>
-            <div className="text-base font-black text-[#E9B83F] font-mono">
-              {money(carry)} <span className="text-xs font-urdu text-[#B7C1D0]">روپے</span>
+
+          <div className="calc-pill calc-received highlight-paid">
+            <span className="calc-label">وصول شدہ رقم (Paid Now):</span>
+            <span className="calc-val text-emerald-300 font-black">Rs. {money(calcTotalReceived)}</span>
+          </div>
+
+          {/* Row 2: Remaining Balance & Payment Method */}
+          <div className="calc-pill calc-carry">
+            <span className="calc-label">بقیہ رقم (Remaining Due):</span>
+            <span className={`calc-val ${calcRemaining > 0 ? 'text-amber-300' : 'text-emerald-400'}`}>
+              Rs. {money(calcRemaining)}
+            </span>
+          </div>
+
+          <div className="calc-pill calc-rate">
+            <span className="calc-label">طریقۂ ادائیگی:</span>
+            <span className="calc-val text-cyan-300">{paymentMethod}</span>
+          </div>
+        </div>
+
+        {/* 5. Received Amount Banner (Glowing Green Badge) */}
+        <div className="dark-slip-total-banner receipt-banner">
+          <div className="total-banner-label">
+            <span>وصول شدہ رقم (Payment Received):</span>
+            <span className="total-banner-sub">
+              {calcRemaining === 0 ? 'مکمل ادائیگی موصول ہو چکی ہے • شکریہ!' : 'جزوی ادائیگی موصول ہوئی'}
+            </span>
+          </div>
+          <div className="total-banner-amount">
+            <span className="currency">Rs.</span>
+            <span className="value">{money(calcTotalReceived)}</span>
+          </div>
+        </div>
+
+        {/* 6. Bank Details & Online Verification Notice */}
+        <div className="dark-slip-rules-card">
+          <div
+            className={`rules-item rule-bank-account ${onEditAccount ? 'cursor-pointer hover:bg-emerald-950/40 rounded-lg p-1 transition-colors' : ''}`}
+            onClick={onEditAccount}
+            title={onEditAccount ? 'اکاؤنٹ نمبر تبدیل کرنے کے لیے کلک کریں' : undefined}
+          >
+            <span className="rule-icon">🏦</span>
+            <div className="rule-text-block">
+              <span>{bankName} برائے آن لائن ٹرانسفر: </span>
+              <span className="account-number-pill" dir="ltr">
+                {accountNumber}
+              </span>
+              <span> عنوان: <b>{accountTitle}</b></span>
+              {onEditAccount && <span className="text-emerald-400 text-xs no-print"> [تبدیل کریں ✏️]</span>}
             </div>
           </div>
-        </div>
 
-        {/* Milk Amount (Right) */}
-        <div className="text-right pr-2">
-          <div className="text-[11px] text-[#B7C1D0] font-medium font-urdu">کل رقم دودھ:</div>
-          <div className="text-lg font-black text-[#F4F3ED] font-mono">
-            {money(milkAmount)} <span className="text-xs font-urdu text-[#39C9D8]">روپے</span>
+          <div className="rules-item rule-whatsapp">
+            <span className="rule-icon">📱</span>
+            <span className="rule-text">
+              کسی بھی معلومات یا سکرین شاٹ کے لیے <span className="whatsapp-highlight" dir="ltr">03204815221</span> پر رابطہ کریں۔
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* Box 5: PROMINENT PAID AMOUNT HERO BOX (Soft Green Success Indicator + Subtle Golden Accent) */}
-      <div className="mt-2.5 p-3 rounded-2xl border-2 border-[#10B981] bg-gradient-to-r from-[#0E352B] via-[#192B48] to-[#0E352B] flex items-center justify-between shadow-[0_4px_20px_rgba(16,185,129,0.22)]">
-        <div className="w-11 h-11 rounded-full bg-[#10B981]/20 border-2 border-[#10B981] flex items-center justify-center text-[#34D399] shrink-0">
-          <CheckCircle2 className="w-7 h-7 text-[#34D399]" />
-        </div>
-        <div className="border-r border-[#10B981]/40 pr-3.5 text-right">
-          <div className="text-sm font-black text-[#34D399] font-urdu leading-tight">ادائیگی شدہ رقم:</div>
-          <div className="text-3xl font-black text-[#F4F3ED] font-mono tracking-tight leading-none mt-1">
-            {money(effectivePaid)} <span className="text-lg text-[#34D399] font-urdu font-normal">روپے</span>
+        {/* 7. Footer Calligraphy "شکریہ! Thank You!" */}
+        <div className="dark-slip-footer">
+          <ThankYouScriptGraphic width={160} height={42} color="#10b981" />
+          <div className="footer-tagline">
+            خالص دودھ و تازہ دہی کا بااعتماد مرکز • آپ کے تعاون کا بہت شکریہ!
           </div>
         </div>
-      </div>
-
-      {/* Box 6: Remaining Amount (باقی رقم) */}
-      <div className="mt-2 p-2.5 rounded-2xl border border-[#39C9D8]/40 bg-[#192B48] flex items-center justify-between shadow-sm">
-        <div className="text-2xl font-black text-[#E9B83F] font-mono">
-          {money(remaining)} <span className="text-sm font-normal text-[#B7C1D0] font-urdu">روپے</span>
-        </div>
-        <span className="text-xs font-bold text-[#F4F3ED] font-urdu">باقی رقم:</span>
-      </div>
-
-      {/* Box 7: شکریہ (Thank You) Banner with Golden Flourish */}
-      <div className="mt-2.5 text-center flex flex-col items-center justify-center">
-        <div className="flex items-center justify-center gap-3 w-full">
-          <div className="h-[1.5px] bg-gradient-to-r from-transparent to-[#39C9D8]/50 flex-1"></div>
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-[#101D35] border border-[#E9B83F] flex items-center justify-center text-[#E9B83F] shadow-sm">
-              <ThumbsUp className="w-3.5 h-3.5" />
-            </div>
-            <span className="text-2xl font-black text-[#F4F3ED] font-urdu tracking-wider">شکریہ</span>
-          </div>
-          <div className="h-[1.5px] bg-gradient-to-l from-transparent to-[#39C9D8]/50 flex-1"></div>
-        </div>
-        {/* Subtle Golden underline flourish */}
-        <div className="w-28 h-1 bg-gradient-to-r from-transparent via-[#E9B83F] to-transparent rounded-full mt-1 opacity-90"></div>
-      </div>
-
-      {/* Milk Splash Waves Graphic with Golden Accent Line at Bottom */}
-      <div className="mt-2 pt-1 flex flex-col items-center">
-        <div className="w-full h-[1.5px] bg-gradient-to-r from-transparent via-[#E9B83F]/60 to-transparent"></div>
-        <svg viewBox="0 0 300 22" className="w-full h-5 text-[#39C9D8]" fill="currentColor">
-          <path d="M0 10 Q 25 22 50 10 T 100 10 T 150 10 T 200 10 T 250 10 T 300 10 V 22 H 0 Z" fill="#F4F3ED" fillOpacity="0.75" />
-          <path d="M0 14 Q 25 4 50 14 T 100 14 T 150 14 T 200 14 T 250 14 T 300 14 V 22 H 0 Z" fill="#39C9D8" fillOpacity="0.35" />
-        </svg>
       </div>
     </div>
   );
