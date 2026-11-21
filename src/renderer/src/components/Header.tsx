@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, ArrowLeft, LogOut, CheckCircle2, AlertCircle, Cloud, QrCode, Loader2, Pause, Play, Clock } from 'lucide-react';
+import { Menu, ArrowLeft, LogOut, CheckCircle2, AlertCircle, Cloud, QrCode, Loader2, Pause, Play, Clock, Sun, Moon } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
+import { useTheme } from '../context/ThemeContext';
 import { CowLogo } from './CowLogo';
 import { WhatsAppQrModal } from './WhatsAppQrModal';
 import { WhatsAppWebStatus, WhatsAppQueueProgress } from '../types/electron';
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateQueue,
 }) => {
   const { language, setLanguage, t } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const [cloudConnected, setCloudConnected] = useState<boolean>(false);
 
   // WhatsApp QR State
@@ -290,6 +292,34 @@ export const Header: React.FC<HeaderProps> = ({
               <Cloud className={`w-3.5 h-3.5 ${cloudConnected ? 'text-cyan-400' : 'text-slate-500'}`} />
               <span>{cloudConnected ? 'Cloud' : 'Offline'}</span>
             </div>
+
+            {/* Theme Switcher (Dark Neon / Clean Light) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-bold transition-all cursor-pointer ${
+                theme === 'dark'
+                  ? 'bg-[#0b1437] border-cyan-500/40 text-amber-300 hover:bg-blue-900/40'
+                  : 'bg-sky-50 border-sky-300 text-sky-700 hover:bg-sky-100'
+              }`}
+              title={
+                theme === 'dark'
+                  ? language === 'ur' ? 'لائٹ موڈ آن کریں' : 'Switch to Light Mode'
+                  : language === 'ur' ? 'ڈارک نیون موڈ آن کریں' : 'Switch to Dark Neon Mode'
+              }
+            >
+              {theme === 'dark' ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="hidden md:inline">{language === 'ur' ? 'لائٹ' : 'Light'}</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-sky-700" />
+                  <span className="hidden md:inline">{language === 'ur' ? 'ڈارک' : 'Dark'}</span>
+                </>
+              )}
+            </button>
 
             {/* Bilingual Language Switcher */}
             <div className="flex items-center bg-[#0b1437] rounded-full p-0.5 border border-blue-500/30 text-xs font-semibold">

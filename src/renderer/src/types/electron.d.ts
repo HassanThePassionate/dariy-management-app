@@ -120,6 +120,7 @@ export interface MonthlyRecordRow {
   month: string;
   liters: number;
   rate: number;
+  carry?: number;
   bill: number;
   paid: number;
   balance: number;
@@ -537,6 +538,7 @@ export interface ElectronAPI {
   getWhatsAppBillStatusMap: (month: string) => Promise<Record<number, { status: string; sentAt?: string }>>;
   setWhatsAppSpeedPreset: (preset: string) => Promise<any>;
   sendSingleBillDirect: (payload: { item: any; settings: any }) => Promise<{ success: boolean; messageId?: string; error?: string }>;
+  sendReceiptDirect: (payload: { item: any; settings: any }) => Promise<{ success: boolean; messageId?: string; error?: string }>;
   onWhatsAppQR: (callback: (qr: string) => void) => () => void;
   onWhatsAppStatus: (callback: (status: WhatsAppWebStatus) => void) => () => void;
   onWhatsAppQueueProgress: (callback: (progress: WhatsAppQueueProgress) => void) => () => void;

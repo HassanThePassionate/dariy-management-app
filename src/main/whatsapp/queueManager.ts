@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { getDatabase } from '../db/database';
-import { generateBillImage, BillRenderData } from '../cloud/billImageGenerator';
+import { generateBillImage, generateReceiptImage, BillRenderData, ReceiptRenderData } from '../cloud/billImageGenerator';
 import { sendWhatsAppImageBill, getWhatsAppStatus, onWhatsAppDeliveryReceipt } from './baileysManager';
 import { buildUrduBillMessage } from './messageTemplates';
 import { isValidWhatsAppPhone, formatToWhatsAppJid } from './phoneUtils';
@@ -981,4 +981,63 @@ export async function sendDirectSingleBill(
 
   broadcastQueueProgress();
   return sendRes;
+}
+
+/**
+ * Dispatch an Aqua Cyan Payment Receiving Receipt directly to a customer's WhatsApp
+ */
+export async function sendDirectReceipt(
+  payload: {
+    customerId: number;
+    receiptNumber?: string;
+    customerName: string;
+    phone: string;
+    billMonth: string;
+    monthLabel?: string;
+    issueDateStr?: string;
+    liters: number;
+    rate: number;
+    billAmount: number;
+    carry?: number;
+    paidNow: number;
+    totalReceived: number;
+    remaining: number;
+  },
+  settings: any
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const conn = getWhatsAppStatus();
+  if (!conn.connected) {
+    return {
+      success: false,
+      error: 'WhatsApp is not connected. Please scan the QR code first.',
+    };
+  }
+
+  const renderData: ReceiptRenderData = {
+    customerId: payload.customerId,
+    receiptNumber: payload.receiptNumber,
+    customerName: payload.customerName,
+    phone: payload.phone,
+    month: payload.billMonth,
+    monthLabel: payload.monthLabel || payload.billMonth,
+    issueDateStr: payload.issueDateStr,
+    rate: payload.rate,
+    liters: payload.liters,
+    billAmount: payload.billAmount,
+    carry: payload.carry || 0,
+    paidNow: payload.paidNow,
+    totalReceived: payload.totalReceived,
+    remaining: payload.remaining,
+    billNo: payload.customerId || payload.receiptNumber,
+    shopTitle: settings?.shop_title,
+    ownerName: settings?.owner_name,
+    shopPhone: settings?.phone,
+  };
+
+  const renderRes = await generateReceiptImage(renderData);
+  if (!renderRes.success || !renderRes.buffer) {
+    return { success: false, error: renderRes.error || 'Failed to render receipt image' };
+  }
+
+  return sendWhatsAppImageBill(payload.phone, renderRes.buffer, '');
 }

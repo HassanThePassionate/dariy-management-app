@@ -35,6 +35,7 @@ import {
 } from '../types/electron';
 import { ModernBillCard } from './ModernBillCard';
 import { buildUrduBillMessage } from '../../../main/whatsapp/messageTemplates';
+import { computeNetUnpaidBreakdown } from '../utils/billingMath';
 
 export const WhatsAppBillingView: React.FC = () => {
   const { language } = useLanguage();
@@ -370,18 +371,27 @@ export const WhatsAppBillingView: React.FC = () => {
 
     setSendingSingleId(item.customer.id);
 
+    const rowCarry = item.row.carry ?? Math.max(0, (item.row.balance || 0) + (item.row.paid || 0) - (item.row.bill || 0));
+    const netBill = computeNetUnpaidBreakdown({
+      liters: item.row.liters,
+      rate: item.row.rate,
+      bill: item.row.bill,
+      carry: rowCarry,
+      alreadyPaid: item.row.paid,
+    });
+
     const payload = {
       customerId: item.customer.id,
       customerName: item.customer.name,
       phone: item.customer.phone,
       billMonth: selectedMonth,
       monthLabel: selectedMonth,
-      liters: item.row.liters,
+      liters: netBill.liters,
       rate: item.row.rate,
-      billAmount: item.row.bill,
-      carry: 0,
-      received: item.row.paid,
-      payable: item.row.balance,
+      billAmount: netBill.bill,
+      carry: netBill.carry,
+      received: netBill.received,
+      payable: netBill.payable,
       accountNumber: billSettings?.account_number || '02090111954760',
       whatsappConsent: item.customer.whatsapp_consent !== false,
     };
@@ -427,21 +437,31 @@ export const WhatsAppBillingView: React.FC = () => {
       return;
     }
 
-    const payloads = targetBills.map((b) => ({
-      customerId: b.customer.id,
-      customerName: b.customer.name,
-      phone: b.customer.phone,
-      billMonth: selectedMonth,
-      monthLabel: selectedMonth,
-      liters: b.row.liters,
-      rate: b.row.rate,
-      billAmount: b.row.bill,
-      carry: 0,
-      received: b.row.paid,
-      payable: b.row.balance,
-      accountNumber: billSettings?.account_number || '02090111954760',
-      whatsappConsent: b.customer.whatsapp_consent !== false,
-    }));
+    const payloads = targetBills.map((b) => {
+      const rowCarry = b.row.carry ?? Math.max(0, (b.row.balance || 0) + (b.row.paid || 0) - (b.row.bill || 0));
+      const netBill = computeNetUnpaidBreakdown({
+        liters: b.row.liters,
+        rate: b.row.rate,
+        bill: b.row.bill,
+        carry: rowCarry,
+        alreadyPaid: b.row.paid,
+      });
+      return {
+        customerId: b.customer.id,
+        customerName: b.customer.name,
+        phone: b.customer.phone,
+        billMonth: selectedMonth,
+        monthLabel: selectedMonth,
+        liters: netBill.liters,
+        rate: b.row.rate,
+        billAmount: netBill.bill,
+        carry: netBill.carry,
+        received: netBill.received,
+        payable: netBill.payable,
+        accountNumber: billSettings?.account_number || '02090111954760',
+        whatsappConsent: b.customer.whatsapp_consent !== false,
+      };
+    });
 
     try {
       const res = await window.electronAPI.enqueueWhatsAppBills({

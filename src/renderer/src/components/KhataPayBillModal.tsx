@@ -17,6 +17,7 @@ import { useLanguage } from '../i18n/LanguageContext';
 import { BillSettings } from '../types/electron';
 import { ModernBillCard } from './ModernBillCard';
 import { ModernReceiptCard } from './ModernReceiptCard';
+import { computeNetUnpaidBreakdown } from '../utils/billingMath';
 
 interface KhataPayBillModalProps {
   isOpen: boolean;
@@ -135,6 +136,24 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
 
   const currentRemaining = totalBill - currentTotalReceived;
 
+  // Net unpaid breakdown for Bill & Receiving Receipt so already-paid previous/milk is excluded
+  const priorPaidForReceipt = isPaymentReceipt && paidNow > 0 ? initialReceived : 0;
+  const receiptBreakdown = computeNetUnpaidBreakdown({
+    liters,
+    rate,
+    bill,
+    carry: carry || 0,
+    alreadyPaid: priorPaidForReceipt,
+  });
+
+  const billBreakdown = computeNetUnpaidBreakdown({
+    liters,
+    rate,
+    bill,
+    carry: carry || 0,
+    alreadyPaid: currentTotalReceived,
+  });
+
   const issueDateStr = formatIssueDate(new Date(), ur);
   const currentTimeStr = formatTime(new Date());
 
@@ -188,6 +207,53 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
   const entered = parseFloat(amount) || 0;
   const remainingPreview = payableBefore - entered;
 
+  const dispatchReceiptWhatsApp = async (paidAmt: number, totalRecvAmt: number, remAmt: number) => {
+    const urduDigits: Record<string, string> = {
+      '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+      '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+      '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+      '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+    };
+    const normalized = (phone || '').replace(/[۰-۹٠-٩]/g, (d) => urduDigits[d] || d);
+    const clean = normalized.replace(/\D/g, '');
+    if (clean.length < 10 || !window.electronAPI?.sendReceiptDirect) return;
+
+    try {
+      const waStatus = await window.electronAPI.getWhatsAppStatus();
+      if (!waStatus?.connected) return;
+
+      setSendingWa(true);
+      const res = await window.electronAPI.sendReceiptDirect({
+        item: {
+          customerId: customerId || 0,
+          receiptNumber,
+          customerName,
+          phone,
+          billMonth: monthKey || monthLabel,
+          monthLabel,
+          issueDateStr,
+          liters: receiptBreakdown.liters,
+          rate,
+          billAmount: receiptBreakdown.bill,
+          carry: receiptBreakdown.carry,
+          paidNow: paidAmt,
+          totalReceived: totalRecvAmt,
+          remaining: Math.max(0, remAmt),
+        },
+        settings,
+      });
+
+      if (res?.success) {
+        setWaSuccess(true);
+        setTimeout(() => setWaSuccess(false), 5000);
+      }
+    } catch (err) {
+      console.error('Auto-send receipt error:', err);
+    } finally {
+      setSendingWa(false);
+    }
+  };
+
   const handlePay = async () => {
     setError('');
     if (!(entered > 0)) {
@@ -197,9 +263,13 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
     setBusy(true);
     try {
       await onPay(entered);
+      const nextTotalReceived = (initialReceived || 0) + entered;
+      const nextRemaining = Math.max(0, totalBill - nextTotalReceived);
       setPaidNow(entered);
       setStage('slip');
       setActiveTab('receipt');
+      // Automatically send Aqua Cyan Receiving Receipt to this customer on WhatsApp
+      dispatchReceiptWhatsApp(entered, nextTotalReceived, nextRemaining);
     } catch (e: any) {
       setError(e?.message || 'Payment failed');
     } finally {
@@ -352,32 +422,55 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
 
       setSendingWa(true);
 
-      const payload = {
-        customerId: customerId || 0,
-        customerName: customerName,
-        phone: phone,
-        billMonth: monthKey || monthLabel,
-        monthLabel: monthLabel,
-        liters: liters,
-        rate: rate,
-        billAmount: bill,
-        carry: carry || 0,
-        received: currentTotalReceived,
-        payable: currentRemaining > 0 ? currentRemaining : 0,
-        accountNumber: settings.account_number || '02090111954760',
-        whatsappConsent: true,
-      };
+      let res: any;
+      if (activeTab === 'receipt') {
+        res = await window.electronAPI.sendReceiptDirect({
+          item: {
+            customerId: customerId || 0,
+            receiptNumber,
+            customerName,
+            phone,
+            billMonth: monthKey || monthLabel,
+            monthLabel,
+            issueDateStr,
+            liters: receiptBreakdown.liters,
+            rate,
+            billAmount: receiptBreakdown.bill,
+            carry: receiptBreakdown.carry,
+            paidNow: paidNow > 0 ? paidNow : currentTotalReceived,
+            totalReceived: currentTotalReceived,
+            remaining: currentRemaining > 0 ? currentRemaining : 0,
+          },
+          settings,
+        });
+      } else {
+        const payload = {
+          customerId: customerId || 0,
+          customerName: customerName,
+          phone: phone,
+          billMonth: monthKey || monthLabel,
+          monthLabel: monthLabel,
+          liters: billBreakdown.liters,
+          rate: rate,
+          billAmount: billBreakdown.bill,
+          carry: billBreakdown.carry,
+          received: billBreakdown.received,
+          payable: billBreakdown.payable,
+          accountNumber: settings.account_number || '02090111954760',
+          whatsappConsent: true,
+        };
 
-      const res = await window.electronAPI.sendSingleBillDirect({
-        item: payload,
-        settings: settings,
-      });
+        res = await window.electronAPI.sendSingleBillDirect({
+          item: payload,
+          settings: settings,
+        });
+      }
 
       if (res?.success) {
         setWaSuccess(true);
         setTimeout(() => setWaSuccess(false), 5000);
       } else {
-        setError(ur ? `بل نہیں بھیجا جا سکا: ${res?.error || 'خرابی'}` : `Failed: ${res?.error || 'Error'}`);
+        setError(ur ? `بھیجا نہیں جا سکا: ${res?.error || 'خرابی'}` : `Failed: ${res?.error || 'Error'}`);
       }
     } catch (err: any) {
       console.error('Error sending WhatsApp bill:', err);
@@ -662,11 +755,11 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                     monthLabel={monthLabel}
                     issueDateStr={issueDateStr}
                     rate={rate}
-                    liters={liters}
-                    bill={bill}
-                    carry={carry}
-                    received={received}
-                    payable={totalBill - (received || 0)}
+                    liters={billBreakdown.liters}
+                    bill={billBreakdown.bill}
+                    carry={billBreakdown.carry}
+                    received={billBreakdown.received}
+                    payable={billBreakdown.payable}
                     settings={settings}
                     accountNumber={settings.account_number}
                     bankName={settings.bank_name}
@@ -683,12 +776,13 @@ export const KhataPayBillModal: React.FC<KhataPayBillModalProps> = ({
                     issueDateStr={issueDateStr}
                     currentTimeStr={currentTimeStr}
                     rate={rate}
-                    liters={liters}
-                    carry={carry}
-                    totalBill={totalBill}
+                    liters={receiptBreakdown.liters}
+                    bill={receiptBreakdown.bill}
+                    carry={receiptBreakdown.carry}
+                    totalBill={receiptBreakdown.totalBill}
                     paidNow={paidNow}
                     totalReceived={currentTotalReceived}
-                    remaining={currentRemaining}
+                    remaining={Math.max(0, currentRemaining)}
                     settings={settings}
                     accountNumber={settings.account_number}
                     bankName={settings.bank_name}

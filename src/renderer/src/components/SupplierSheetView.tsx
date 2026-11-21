@@ -495,7 +495,7 @@ export const SupplierSheetView: React.FC<SupplierSheetViewProps> = ({
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+      <div className="excel-sheet bg-white rounded-2xl border border-slate-300 overflow-hidden shadow-sm">
         <div
           ref={tableContainerRef}
           tabIndex={0}

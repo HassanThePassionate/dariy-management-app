@@ -30,7 +30,7 @@ import { DbInfo, DashboardStats } from '../types/electron';
 
 interface DashboardScreenProps {
   onOpenAddMilk: () => void;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, monthKey?: string) => void;
   dbInfo: DbInfo | null;
 }
 
@@ -270,10 +270,16 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       </div>
 
-      {/* 3. Four Top Hero Metric Cards (Image 5 in Pure Dark Mode) */}
+      {/* 3. Four Top Hero Metric Cards (Clickable) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: TODAY'S MILK SOLD */}
-        <div className="bg-[#081028] border border-blue-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-blue-400/50 transition-all flex flex-col justify-between">
+        <div
+          onClick={() => onNavigate('daily-sale')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('daily-sale')}
+          className="bg-[#081028] border border-blue-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-blue-400/70 hover:-translate-y-0.5 transition-all flex flex-col justify-between cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-blue-200/80 uppercase tracking-wider">
               {ur ? 'آج کل فروخت دودھ' : "TODAY'S MILK SOLD"}
@@ -293,7 +299,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
 
         {/* Card 2: TODAY'S REVENUE */}
-        <div className="bg-[#081028] border border-emerald-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-emerald-400/50 transition-all flex flex-col justify-between">
+        <div
+          onClick={() => onNavigate('daily-sale')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('daily-sale')}
+          className="bg-[#081028] border border-emerald-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-emerald-400/70 hover:-translate-y-0.5 transition-all flex flex-col justify-between cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
               {ur ? 'آج کی کل آمدن' : "TODAY'S REVENUE"}
@@ -313,7 +325,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
 
         {/* Card 3: AVAILABLE STOCK NOW */}
-        <div className="bg-[#081028] border border-amber-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-amber-400/50 transition-all flex flex-col justify-between">
+        <div
+          onClick={() => onNavigate('daily-stock')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('daily-stock')}
+          className="bg-[#081028] border border-amber-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-amber-400/70 hover:-translate-y-0.5 transition-all flex flex-col justify-between cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
               {ur ? 'موجودہ دستیاب اسٹاک' : 'AVAILABLE STOCK NOW'}
@@ -333,7 +351,13 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
 
         {/* Card 4: TOTAL CUSTOMER DUES */}
-        <div className="bg-[#081028] border border-rose-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-rose-400/50 transition-all flex flex-col justify-between">
+        <div
+          onClick={() => onNavigate('monthly-khatta', selectedMonth)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('monthly-khatta', selectedMonth)}
+          className="bg-[#081028] border border-rose-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-rose-400/70 hover:-translate-y-0.5 transition-all flex flex-col justify-between cursor-pointer"
+        >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wider">
               {ur ? 'گاہکوں کا کل بقایا' : 'TOTAL CUSTOMER DUES'}
@@ -365,63 +389,87 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* Card 1: Month Billed */}
-          <div className="bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20">
+          {/* Card 1: Month Billed -> Monthly Khatta (Selected Month) */}
+          <button
+            type="button"
+            onClick={() => onNavigate('monthly-khatta', selectedMonth)}
+            className="text-left bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20 hover:border-cyan-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-slate-400">{ur ? 'کل بلنگ' : 'Month Billed'}</div>
             <div className="text-base font-black text-white mt-1">
               Rs. {money(stats.monthBilled || 0)}
             </div>
-            <div className="text-[10px] text-cyan-400">{qtyFmt(stats.totalMilk || 0)} Ltr</div>
-          </div>
+            <div className="text-[10px] text-cyan-400">{qtyFmt(stats.totalMilk || 0)} Ltr • {ur ? 'کھولیں →' : 'Open →'}</div>
+          </button>
 
-          {/* Card 2: Month Collected */}
-          <div className="bg-[#061e1f] rounded-2xl p-3 border border-emerald-500/20">
+          {/* Card 2: Month Collected -> Monthly Khatta (Selected Month) */}
+          <button
+            type="button"
+            onClick={() => onNavigate('monthly-khatta', selectedMonth)}
+            className="text-left bg-[#061e1f] rounded-2xl p-3 border border-emerald-500/20 hover:border-emerald-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-emerald-400">{ur ? 'کل وصولی' : 'Month Collected'}</div>
             <div className="text-base font-black text-emerald-300 mt-1">
               Rs. {money(stats.monthCollected || 0)}
             </div>
-            <div className="text-[10px] text-emerald-400/80">{ur ? 'نقد و ٹرانسفر' : 'Cash & Transfer'}</div>
-          </div>
+            <div className="text-[10px] text-emerald-400/80">{ur ? 'نقد و ٹرانسفر →' : 'Cash & Transfer →'}</div>
+          </button>
 
-          {/* Card 3: Supplier Milk (Today) */}
-          <div className="bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20">
+          {/* Card 3: Supplier Milk (Today) -> Suppliers */}
+          <button
+            type="button"
+            onClick={() => onNavigate('suppliers')}
+            className="text-left bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20 hover:border-indigo-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-slate-400">{ur ? 'سپلائر دودھ (آج)' : 'Supplier Milk (Today)'}</div>
             <div className="text-base font-black text-white mt-1">
               {qtyFmt(stats.todayPurchased || 0)} Ltr
             </div>
             <div className="text-[10px] text-cyan-400">
-              Rs. {money(stats.todayPurchaseCost || 0)}
+              Rs. {money(stats.todayPurchaseCost || 0)} →
             </div>
-          </div>
+          </button>
 
-          {/* Card 4: Supplier Payable */}
-          <div className="bg-[#260f17] rounded-2xl p-3 border border-rose-500/20">
+          {/* Card 4: Supplier Payable -> Suppliers */}
+          <button
+            type="button"
+            onClick={() => onNavigate('suppliers')}
+            className="text-left bg-[#260f17] rounded-2xl p-3 border border-rose-500/20 hover:border-rose-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-rose-400">{ur ? 'سپلائر واجب الادا' : 'Supplier Payable'}</div>
             <div className="text-base font-black text-rose-300 mt-1">
               Rs. {money(stats.supplierPayable || 0)}
             </div>
-            <div className="text-[10px] text-rose-400/80">{stats.suppliersCount || 1} suppliers</div>
-          </div>
+            <div className="text-[10px] text-rose-400/80">{stats.suppliersCount || 1} suppliers →</div>
+          </button>
 
-          {/* Card 5: Expenses (Today/Mo) */}
-          <div className="bg-[#21190a] rounded-2xl p-3 border border-amber-500/20">
+          {/* Card 5: Expenses (Today/Mo) -> Expenses & Fleet */}
+          <button
+            type="button"
+            onClick={() => onNavigate('fleet-expenses')}
+            className="text-left bg-[#21190a] rounded-2xl p-3 border border-amber-500/20 hover:border-amber-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-amber-400">{ur ? 'اخراجات (آج/ماہ)' : 'Expenses (Today/Mo)'}</div>
             <div className="text-base font-black text-amber-300 mt-1">
               Rs. {money(stats.todayExpenses || 0)}
             </div>
-            <div className="text-[10px] text-amber-400/80">Mo: Rs. {money(stats.monthExpenses || 0)}</div>
-          </div>
+            <div className="text-[10px] text-amber-400/80">Mo: Rs. {money(stats.monthExpenses || 0)} →</div>
+          </button>
 
-          {/* Card 6: Ghee & Shopper */}
-          <div className="bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20">
+          {/* Card 6: Ghee & Shopper -> Ghee Stock */}
+          <button
+            type="button"
+            onClick={() => onNavigate('ghee')}
+            className="text-left bg-[#0c163b] rounded-2xl p-3 border border-blue-500/20 hover:border-amber-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
+          >
             <div className="text-[10px] font-bold text-slate-400">{ur ? 'دیسی گھی و شاپر' : 'Ghee & Shopper'}</div>
             <div className="text-base font-black text-white mt-1">
               {stats.gheeStock || 0} Kg <span className="text-xs font-normal text-slate-400">Ghee</span>
             </div>
             <div className="text-[10px] text-cyan-400">
-              {stats.shopperStock || 0} kg Bags • Rs. {money(stats.gheeProfit || 0)} profit
+              {stats.shopperStock || 0} kg Bags • Rs. {money(stats.gheeProfit || 0)} →
             </div>
-          </div>
+          </button>
         </div>
       </div>
 

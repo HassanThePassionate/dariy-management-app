@@ -112,6 +112,7 @@ var api = {
   getWhatsAppBillStatusMap: (month) => import_electron.ipcRenderer.invoke("whatsapp:getBillStatusMap", month),
   setWhatsAppSpeedPreset: (preset) => import_electron.ipcRenderer.invoke("whatsapp:setSpeedPreset", preset),
   sendSingleBillDirect: (payload) => import_electron.ipcRenderer.invoke("whatsapp:sendSingleBillDirect", payload),
+  sendReceiptDirect: (payload) => import_electron.ipcRenderer.invoke("whatsapp:sendReceiptDirect", payload),
   onWhatsAppQR: (callback) => {
     const listener = (_e, qr) => callback(qr);
     import_electron.ipcRenderer.on("whatsapp:qr", listener);

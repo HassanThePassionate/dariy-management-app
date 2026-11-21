@@ -236,6 +236,7 @@ export interface ElectronAPI {
   getWhatsAppBillStatusMap: (month: string) => Promise<Record<number, { status: string; sentAt?: string }>>;
   setWhatsAppSpeedPreset: (preset: string) => Promise<any>;
   sendSingleBillDirect: (payload: { item: any; settings: any }) => Promise<any>;
+  sendReceiptDirect: (payload: { item: any; settings: any }) => Promise<any>;
   onWhatsAppQR: (callback: (qr: string) => void) => () => void;
   onWhatsAppStatus: (callback: (status: any) => void) => () => void;
   onWhatsAppQueueProgress: (callback: (progress: any) => void) => () => void;
@@ -354,6 +355,7 @@ const api: ElectronAPI = {
   getWhatsAppBillStatusMap: (month) => ipcRenderer.invoke('whatsapp:getBillStatusMap', month),
   setWhatsAppSpeedPreset: (preset) => ipcRenderer.invoke('whatsapp:setSpeedPreset', preset),
   sendSingleBillDirect: (payload) => ipcRenderer.invoke('whatsapp:sendSingleBillDirect', payload),
+  sendReceiptDirect: (payload) => ipcRenderer.invoke('whatsapp:sendReceiptDirect', payload),
   onWhatsAppQR: (callback) => {
     const listener = (_e: any, qr: string) => callback(qr);
     ipcRenderer.on('whatsapp:qr', listener);

@@ -29,6 +29,7 @@ import {
 import { ModernBillCard } from './ModernBillCard';
 import { ModernReceiptCard } from './ModernReceiptCard';
 import { WhatsAppQrModal } from './WhatsAppQrModal';
+import { computeNetUnpaidBreakdown } from '../utils/billingMath';
 
 type Tab = 'monthly' | 'walkin';
 
@@ -289,37 +290,70 @@ export const AllRecordsView: React.FC = () => {
 
     setSendingSingleId(customer.id);
 
+    const rowCarry = row.carry ?? Math.max(0, (row.balance || 0) + (row.paid || 0) - (row.bill || 0));
+    const netBill = computeNetUnpaidBreakdown({
+      liters: row.liters,
+      rate: row.rate,
+      bill: row.bill,
+      carry: rowCarry,
+      alreadyPaid: row.paid,
+    });
+
     const payload = {
       customerId: customer.id,
       customerName: customer.name,
       phone: customer.phone,
       billMonth: row.month,
       monthLabel: monthLabel(row.month, ur),
-      liters: row.liters,
+      liters: netBill.liters,
       rate: row.rate,
-      billAmount: row.bill,
-      carry: 0,
-      received: row.paid,
-      payable: row.balance,
+      billAmount: netBill.bill,
+      carry: netBill.carry,
+      received: netBill.received,
+      payable: netBill.payable,
       accountNumber: billSettings?.account_number || '02090111954760',
       whatsappConsent: customer.whatsapp_consent !== false,
     };
 
     try {
-      const res = await window.electronAPI.sendSingleBillDirect({
-        item: payload,
-        settings: billSettings,
-      });
+      const res =
+        billFor && cardMode === 'receipt'
+          ? await window.electronAPI.sendReceiptDirect({
+              item: {
+                customerId: customer.id,
+                receiptNumber: String(customer.id || '28'),
+                customerName: customer.name,
+                phone: customer.phone,
+                billMonth: row.month,
+                monthLabel: monthLabel(row.month, ur),
+                liters: row.liters,
+                rate: row.rate,
+                billAmount: row.bill,
+                carry: rowCarry,
+                paidNow: row.paid,
+                totalReceived: row.paid,
+                remaining: Math.max(0, row.balance),
+              },
+              settings: billSettings,
+            })
+          : await window.electronAPI.sendSingleBillDirect({
+              item: payload,
+              settings: billSettings,
+            });
 
       if (res.success) {
         showToast(
           'success',
           ur
-            ? `بل کی تصویر ${customer.name} کو واٹس ایپ پر بھیج دی گئی ہے!`
+            ? cardMode === 'receipt' && billFor
+              ? `رسید کی تصویر ${customer.name} کو واٹس ایپ پر بھیج دی گئی ہے!`
+              : `بل کی تصویر ${customer.name} کو واٹس ایپ پر بھیج دی گئی ہے!`
+            : cardMode === 'receipt' && billFor
+            ? `Receipt image sent to ${customer.name}!`
             : `Bill image sent to ${customer.name}!`
         );
       } else {
-        showToast('error', ur ? `بل نہیں بھیجا جا سکا: ${res.error}` : `Failed: ${res.error}`);
+        showToast('error', ur ? `بھیجا نہیں جا سکا: ${res.error}` : `Failed: ${res.error}`);
       }
     } catch (err: any) {
       console.error('Failed to send bill:', err);
@@ -808,7 +842,16 @@ export const AllRecordsView: React.FC = () => {
                 )}
               </div>
 
-              {cardMode === 'bill' ? (
+              {cardMode === 'bill' ? (() => {
+                const rowCarry = billFor.row.carry ?? Math.max(0, (billFor.row.balance || 0) + (billFor.row.paid || 0) - (billFor.row.bill || 0));
+                const netBill = computeNetUnpaidBreakdown({
+                  liters: billFor.row.liters,
+                  rate: billFor.row.rate,
+                  bill: billFor.row.bill,
+                  carry: rowCarry,
+                  alreadyPaid: billFor.row.paid,
+                });
+                return (
                 <ModernBillCard
                   customerId={billFor.customer.id}
                   customerName={billFor.customer.name}
@@ -816,11 +859,11 @@ export const AllRecordsView: React.FC = () => {
                   monthLabel={monthLabel(billFor.row.month, ur)}
                   issueDateStr={new Date().toLocaleDateString(ur ? 'ur-PK' : 'en-GB')}
                   rate={billFor.row.rate}
-                  liters={billFor.row.liters}
-                  bill={billFor.row.bill}
-                  carry={0}
-                  received={billFor.row.paid}
-                  payable={billFor.row.balance}
+                  liters={netBill.liters}
+                  bill={netBill.bill}
+                  carry={netBill.carry}
+                  received={netBill.received}
+                  payable={netBill.payable}
                   billNo={billFor.customer.id || '28'}
                   settings={{
                     shop_title: billSettings?.shop_title || 'قاری ظفر اقبال ملک شاپ',
@@ -836,7 +879,8 @@ export const AllRecordsView: React.FC = () => {
                   ur={ur}
                   onEditAccount={() => setShowAccountEditor(true)}
                 />
-              ) : (
+                );
+              })() : (
                 <ModernReceiptCard
                   receiptNumber={String(billFor.customer.id || '28')}
                   customerName={billFor.customer.name}
@@ -845,7 +889,8 @@ export const AllRecordsView: React.FC = () => {
                   issueDateStr={new Date().toLocaleDateString(ur ? 'ur-PK' : 'en-GB')}
                   rate={billFor.row.rate}
                   liters={billFor.row.liters}
-                  totalBill={billFor.row.bill}
+                  carry={billFor.row.carry ?? Math.max(0, (billFor.row.balance || 0) + (billFor.row.paid || 0) - (billFor.row.bill || 0))}
+                  totalBill={(billFor.row.bill || 0) + (billFor.row.carry ?? Math.max(0, (billFor.row.balance || 0) + (billFor.row.paid || 0) - (billFor.row.bill || 0)))}
                   paidNow={billFor.row.paid}
                   totalReceived={billFor.row.paid}
                   remaining={billFor.row.balance}

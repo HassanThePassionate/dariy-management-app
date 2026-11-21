@@ -35,11 +35,12 @@ import {
   getQueueItemsForMonth,
   getCustomerBillStatusMap,
   sendDirectSingleBill,
+  sendDirectReceipt,
   setQueueSpeedPreset,
   broadcastQueueProgress,
   SpeedPreset,
 } from '../whatsapp/queueManager';
-import { generateBillImage } from '../cloud/billImageGenerator';
+import { generateBillImage, generateReceiptImage } from '../cloud/billImageGenerator';
 
 export function registerIpcHandlers(): void {
   // 1. Database Info & Health Check
@@ -1412,9 +1413,10 @@ export function registerIpcHandlers(): void {
         const bill = liters * rate;
         const paid = payMap[key(c.id, m)] || 0;
         if (key(c.id, m) in ovMap) balance = ovMap[key(c.id, m)];
+        const carry = Math.round(balance);
         balance += bill - paid;
         totalBilled += bill; totalPaid += paid; totalLiters += liters;
-        return { month: m, liters, rate, bill: Math.round(bill), paid: Math.round(paid), balance: Math.round(balance) };
+        return { month: m, liters, rate, carry, bill: Math.round(bill), paid: Math.round(paid), balance: Math.round(balance) };
       });
       return {
         id: c.id, name: c.name, phone: c.phone, address: c.address,
@@ -1873,6 +1875,10 @@ export function registerIpcHandlers(): void {
     return sendDirectSingleBill(payload.item, payload.settings);
   });
 
+  ipcMain.handle('whatsapp:sendReceiptDirect', async (_e, payload: { item: any; settings: any }) => {
+    return sendDirectReceipt(payload.item, payload.settings);
+  });
+
   ipcMain.handle('whatsapp:sendSingleBill', async (_e, payload: { item: any; settings: any; force?: boolean }) => {
     const waStatus = getWhatsAppStatus();
     if (waStatus.connected) {
@@ -1944,6 +1950,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('bill:renderImage', async (_e, data: any) => {
     return generateBillImage(data);
+  });
+
+  ipcMain.handle('receipt:renderImage', async (_e, data: any) => {
+    return generateReceiptImage(data);
   });
 
   // 18. Vehicles

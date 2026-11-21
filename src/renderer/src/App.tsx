@@ -30,8 +30,12 @@ export const App: React.FC = () => {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [pageHistory, setPageHistory] = useState<PageId[]>(['dashboard']);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
+  const [khattaInitialMonth, setKhattaInitialMonth] = useState<string | undefined>(undefined);
 
-  const navigateTo = (page: PageId) => {
+  const navigateTo = (page: PageId, monthKey?: string) => {
+    if (monthKey) {
+      setKhattaInitialMonth(monthKey);
+    }
     if (page !== activePage) {
       setPageHistory((prev) => [...prev, page]);
       setActivePage(page);
@@ -175,7 +179,7 @@ export const App: React.FC = () => {
         {activePage === 'dashboard' && (
           <DashboardScreen
             onOpenAddMilk={() => navigateTo('daily-sale')}
-            onNavigate={(page) => navigateTo(page as PageId)}
+            onNavigate={(page, monthKey) => navigateTo(page as PageId, monthKey)}
             dbInfo={dbInfo}
           />
         )}
@@ -194,7 +198,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activePage === 'monthly-khatta' && <MonthlyKhattaView />}
+        {activePage === 'monthly-khatta' && <MonthlyKhattaView initialMonth={khattaInitialMonth} />}
 
         {activePage === 'suppliers' && <SuppliersView />}
 

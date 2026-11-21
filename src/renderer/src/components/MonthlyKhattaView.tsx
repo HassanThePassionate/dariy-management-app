@@ -259,12 +259,12 @@ const KhataRow = React.memo<KhataRowProps>(
                     e.target.value = v > 0 ? formatQty(v) : '';
                   }
                 }}
-                className={`w-full h-7 text-center text-[11px] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 transition-colors ${
+                className={`w-full h-7 text-center text-[11px] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 transition-colors ${
                   isZero
-                    ? '!bg-rose-600/25 !text-rose-400 !border !border-rose-500/60 font-black shadow-[inset_0_0_8px_rgba(244,63,94,0.3)]'
+                    ? '!bg-rose-50 !text-rose-600 !border !border-rose-200 font-black'
                     : value
-                    ? '!bg-emerald-600/20 !text-emerald-300 font-bold !border !border-emerald-500/30'
-                    : 'bg-transparent text-slate-300 hover:bg-white/5'
+                    ? '!bg-emerald-50 !text-emerald-700 font-bold !border !border-emerald-200'
+                    : 'bg-transparent text-slate-800 hover:bg-sky-50'
                 }`}
               />
             </td>
@@ -404,10 +404,16 @@ const KhataRow = React.memo<KhataRowProps>(
 
 KhataRow.displayName = 'KhataRow';
 
-export const MonthlyKhattaView: React.FC = () => {
+export const MonthlyKhattaView: React.FC<{ initialMonth?: string }> = ({ initialMonth }) => {
   const { t, language } = useLanguage();
 
-  const [monthKey, setMonthKey] = useState<string>(() => toMonthKey(new Date()));
+  const [monthKey, setMonthKey] = useState<string>(() => initialMonth || toMonthKey(new Date()));
+
+  useEffect(() => {
+    if (initialMonth) {
+      setMonthKey(initialMonth);
+    }
+  }, [initialMonth]);
   const [customers, setCustomers] = useState<KhataCustomer[]>([]);
   const [entries, setEntries] = useState<EntryMap>({});
   const [received, setReceived] = useState<ReceivedMap>({});
@@ -1849,8 +1855,8 @@ export const MonthlyKhattaView: React.FC = () => {
         </div>
       )}
 
-      {/* 3. Spreadsheet grid */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      {/* 3. Spreadsheet grid (Always crisp white Excel sheet) */}
+      <div className="excel-sheet bg-white rounded-2xl border border-slate-300 shadow-sm overflow-hidden">
         <div
           ref={tableContainerRef}
           tabIndex={0}

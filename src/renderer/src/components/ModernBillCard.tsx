@@ -1,7 +1,5 @@
 import React from 'react';
-import './receipt-card.css';
-import logoUrl from '../assets/logo.png';
-import { ThankYouScriptGraphic } from './ThankYouScriptGraphic';
+import { Phone, FileText, CheckCircle2, Megaphone, Coins } from 'lucide-react';
 
 export interface ModernBillCardProps {
   customerId?: number;
@@ -44,15 +42,13 @@ const qty = (n: number | undefined | null) => {
 
 export const ModernBillCard: React.FC<ModernBillCardProps> = ({
   customerId,
-  customerName = 'کاظم',
+  customerName = 'احمد علی',
   phone,
-  address,
   monthLabel = 'اگست 2026',
-  issueDateStr,
   rate = 240,
-  liters = 0,
+  liters = 80,
   bill,
-  carry = 0,
+  carry = 140,
   received = 0,
   payable,
   billNo = customerId || '28',
@@ -65,9 +61,10 @@ export const ModernBillCard: React.FC<ModernBillCardProps> = ({
 }) => {
   const shopTitle = settings?.shop_title || 'قاری ظفر اقبال ملک شاپ';
   const ownerName = settings?.owner_name || 'حافظ مصعب ظفر';
-  const bankName = customBankName || settings?.bank_name || 'میزان بینک';
-  const accountTitle = customAccountTitle || settings?.account_title || 'حافظ مصعب ظفر';
-  const accountNumber = customAccountNo || settings?.account_number || '02090111954760';
+  const contactPhone = settings?.phone || '0300-1234567';
+  const bankName = customBankName || settings?.bank_name || 'faysalbank';
+  const accountTitle = customAccountTitle || settings?.account_title || 'Hafiz Musab Zafar';
+  const accountNumber = customAccountNo || settings?.account_number || '0210-1234567890';
 
   const milkAmount = typeof bill === 'number' && Number.isFinite(bill) ? bill : Math.round(liters * rate);
   const totalPayable =
@@ -76,178 +73,213 @@ export const ModernBillCard: React.FC<ModernBillCardProps> = ({
       : Math.max(0, milkAmount + (carry || 0) - (received || 0));
 
   return (
-    <div id="print-bill" className="printable-bill modern-dark-slip">
-      {/* Outer Glow & Double Border Frame */}
-      <div className="dark-slip-inner-frame">
-        {/* Top Header Section */}
-        <div className="dark-slip-header">
-          {/* Bismillah */}
-          <div className="dark-slip-bismillah">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
+    <div
+      id="print-bill"
+      dir="rtl"
+      className="printable-bill mx-auto shadow-2xl print:shadow-none select-none text-right font-sans relative overflow-hidden"
+      style={{
+        width: '430px',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+        backgroundColor: '#f0f9ff',
+        backgroundImage: 'linear-gradient(180deg, #dcf4fd 0%, #e0f2fe 30%, #f0fdfa 70%, #d8f3fd 100%)',
+        borderRadius: '26px',
+        border: '3px solid #0284c7',
+        boxShadow: '0 14px 40px rgba(2, 132, 199, 0.25), 0 0 20px rgba(56, 189, 248, 0.35)',
+        color: '#0f172a',
+        padding: '16px 14px 20px',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {/* Top Header Splash: Bottle Graphic + Shop Title & Owner Badge */}
+      <div className="relative text-center pb-1">
+        {/* Milk Bottle Graphic with Glass Splash Effect */}
+        <div className="flex justify-center items-center gap-1.5 mb-1">
+          <div className="w-12 h-14 flex items-center justify-center">
+            <svg viewBox="0 0 64 64" className="w-12 h-12 filter drop-shadow-[0_2px_8px_rgba(2,132,199,0.35)]" fill="none">
+              <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#0284c7" strokeWidth="1.5" />
+              <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fillOpacity="0.95" stroke="#0284c7" strokeWidth="2" />
+              <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#38bdf8" fillOpacity="0.35" />
+              <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fillOpacity="0.95" stroke="#0284c7" strokeWidth="1.5" />
+            </svg>
+          </div>
+        </div>
 
-          {/* Title Row with Logo */}
-          <div className="dark-slip-title-row">
-            <div className="dark-slip-logo-badge" title={shopTitle}>
-              <img src={logoUrl} alt={shopTitle} className="dark-slip-logo-img" />
-            </div>
+        {/* Shop Name in Beautiful Bold Calligraphy Style */}
+        <h1 className="text-3xl font-black text-[#0c2e5e] tracking-wide font-urdu leading-tight filter drop-shadow-sm">
+          {shopTitle}
+        </h1>
 
-            <div className="dark-slip-brand">
-              <h1 className="dark-slip-shop-title">{shopTitle}</h1>
-              <div className="dark-slip-subtitle">
-                پروپرائٹر: <b>{ownerName}</b> • معیار، اعتماد اور خالص دودھ کا بااعتماد مرکز
-              </div>
-            </div>
+        {/* Owner Name Pill with glowing border */}
+        <div className="inline-block mt-1 px-5 py-0.5 rounded-full border-2 border-[#0284c7] bg-[#0c4a7e] shadow-sm">
+          <span className="text-sm font-bold text-white font-urdu">{ownerName}</span>
+        </div>
+      </div>
 
-            <div className="dark-slip-badge">
-              <span className="badge-ur">دودھ کا بل</span>
-              <span className="badge-en">Milk Bill</span>
+      {/* Box 1: Mobile Number (Aqua/Cyan Container) */}
+      <div className="mt-2.5 p-2 rounded-xl border-2 border-[#0284c7] bg-white flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-2 text-[#0c2e5e] font-black font-mono text-xl tracking-wider" dir="ltr">
+          <div className="w-7 h-7 rounded-full bg-[#0284c7] flex items-center justify-center text-white shrink-0 shadow-sm">
+            <Phone className="w-3.5 h-3.5" />
+          </div>
+          <span>{contactPhone}</span>
+        </div>
+        <div className="flex items-center gap-1 border-r-2 border-[#0284c7]/30 pr-3">
+          <span className="text-xs font-bold text-[#0c2e5e] font-urdu">موبائل نمبر:</span>
+        </div>
+      </div>
+
+      {/* Box 2: Bill Number, Month & Customer Name */}
+      <div className="mt-2 p-2 rounded-xl border-2 border-[#0284c7] bg-white grid grid-cols-2 gap-2 shadow-sm">
+        {/* Left: Bill Number & Month */}
+        <div className="flex items-center gap-2 border-l-2 border-[#0284c7]/30 pl-2">
+          <div className="w-8 h-8 rounded-lg bg-[#0284c7] flex items-center justify-center text-white shrink-0 shadow-sm">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] text-slate-500 font-bold">بل نمبر:</div>
+            <div className="text-2xl font-black text-[#0c2e5e] font-mono leading-none">{billNo}</div>
+            <div className="text-[10px] text-[#0284c7] font-bold mt-0.5">مہینہ: {monthLabel}</div>
+          </div>
+        </div>
+
+        {/* Right: Customer Name */}
+        <div className="text-right pr-1 flex flex-col justify-center">
+          <span className="text-[10px] text-slate-500 font-bold">بل نام:</span>
+          <span className="text-2xl font-black text-[#0c2e5e] font-urdu truncate leading-tight">{customerName}</span>
+        </div>
+      </div>
+
+      {/* Box 3: Rate per liter & Total Liters */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {/* Rate */}
+        <div className="p-2 rounded-xl border-2 border-[#0284c7] bg-white flex items-center justify-between shadow-sm">
+          <div className="w-8 h-8 rounded-lg bg-[#e0f2fe] border border-[#0284c7] flex items-center justify-center text-[#0284c7] shrink-0">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current" strokeWidth="2">
+              <path d="M6 3h12l1 18H5L6 3z" />
+              <path d="M5 8h14" />
+            </svg>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] text-slate-500 font-bold">فی لیٹر ریٹ:</div>
+            <div className="text-base font-black text-[#0c2e5e] leading-tight">
+              <span className="font-mono text-xl">{rate}</span> <span className="text-xs font-urdu text-slate-600">روپے</span>
             </div>
           </div>
         </div>
 
-        {/* 2. Mobile Numbers Box (Matching the exact paper slip layout) */}
-        <div className="dark-slip-mobile-box">
-          <div className="mobile-box-label">
-            <span>Mobile No:</span>
+        {/* Total Milk Liters */}
+        <div className="p-2 rounded-xl border-2 border-[#0284c7] bg-white flex items-center justify-between shadow-sm">
+          <div className="w-8 h-8 rounded-lg bg-[#e0f2fe] border border-[#0284c7] flex items-center justify-center text-[#0284c7] shrink-0">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 fill-[#0284c7]">
+              <path d="M7 6h10a1 1 0 0 1 1 1v2a5 5 0 0 1-5 5H11A5 5 0 0 1 6 9V7a1 1 0 0 1 1-1z" />
+              <path d="M9 14v6a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-6" />
+            </svg>
           </div>
-          <div className="mobile-box-grid">
-            <div className="mobile-row">
-              <span className="mobile-num">0300-8440710</span>
-              <span className="mobile-sep">,</span>
-              <span className="mobile-num">0320-4815221</span>
-            </div>
-            <div className="mobile-row">
-              <span className="mobile-num">0300-9416564</span>
-              <span className="mobile-sep">,</span>
-              <span className="mobile-num">0321-4815221</span>
+          <div className="text-right">
+            <div className="text-[10px] text-slate-500 font-bold">کل دودھ:</div>
+            <div className="text-base font-black text-[#0c2e5e] leading-tight">
+              <span className="font-mono text-xl text-[#0284c7]">{qty(liters)}</span> <span className="text-xs font-urdu text-slate-600">لیٹر</span>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* 3. Customer & Account / Bill Number Box */}
-        <div className="dark-slip-customer-section">
-          {/* Left: Account / Bill Number Badge (Box with #28) */}
-          <div className="dark-slip-account-badge" title="بل نمبر / اکاؤنٹ نمبر">
-            <div className="badge-box-label">اکاؤنٹ / بل نمبر</div>
-            <div className="badge-box-num">{billNo}</div>
+      {/* Box 4: Previous Balance & Milk Amount */}
+      <div className="mt-2 p-2 rounded-xl border-2 border-[#0284c7] bg-white grid grid-cols-2 gap-2 items-center shadow-sm">
+        {/* Previous Balance */}
+        <div className="flex items-center gap-2 border-l-2 border-[#0284c7]/30 pl-2">
+          <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-400 flex items-center justify-center text-amber-600 shrink-0">
+            <Coins className="w-4 h-4" />
           </div>
-
-          {/* Right: Customer Name & Month */}
-          <div className="dark-slip-customer-meta">
-            <div className="customer-meta-row">
-              <span className="meta-label">بل بنام:</span>
-              <span className="meta-val customer-name">{customerName}</span>
-              {phone && (
-                <span className="meta-phone" dir="ltr">
-                  ({phone})
-                </span>
-              )}
-            </div>
-
-            <div className="customer-meta-row">
-              <span className="meta-label">بل ماہ وسال:</span>
-              <span className="meta-val month-val">{monthLabel}</span>
-              {issueDateStr && (
-                <span className="meta-date">
-                  [تاریخ اجرا: {issueDateStr}]
-                </span>
-              )}
+          <div>
+            <div className="text-[10px] text-slate-500 font-bold">سابقہ رقم:</div>
+            <div className="text-base font-black text-amber-600">
+              <span className="font-mono text-lg">{money(carry)}</span> <span className="text-xs font-urdu text-slate-600">روپے</span>
             </div>
           </div>
         </div>
 
-        {/* 4. Milk Calculations Rows (Vibrant Colorful Dark Badges) */}
-        <div className="dark-slip-calc-grid">
-          {/* Row 1: Rate & Liters */}
-          <div className="calc-pill calc-rate">
-            <span className="calc-label">دودھ فی لٹر:</span>
-            <span className="calc-val">Rs. {money(rate)}</span>
-          </div>
-          <div className="calc-pill calc-liters">
-            <span className="calc-label">ٹوٹل لٹر دودھ:</span>
-            <span className="calc-val">{qty(liters)} لٹر</span>
-          </div>
-
-          {/* Row 2: Milk Amount & Previous Balance */}
-          <div className="calc-pill calc-milk-amount">
-            <span className="calc-label">کل رقم دودھ:</span>
-            <span className="calc-val">Rs. {money(milkAmount)}</span>
-          </div>
-          <div className="calc-pill calc-carry">
-            <span className="calc-label">سابقہ رقم (بقایا):</span>
-            <span className="calc-val">Rs. {money(carry)}</span>
-          </div>
-
-          {/* Received if any */}
-          {received > 0 && (
-            <div className="calc-pill calc-received col-span-2">
-              <span className="calc-label">وصول شدہ رقم (پیشگی/جزوی):</span>
-              <span className="calc-val text-emerald-400">-Rs. {money(received)}</span>
-            </div>
-          )}
-        </div>
-
-        {/* 5. Grand Total / Payable Card (Prominent Glowing Gradient Card) */}
-        <div className="dark-slip-total-banner">
-          <div className="total-banner-label">
-            <span>ٹوٹل رقم دودھ / کل واجب الادا:</span>
-            <span className="total-banner-sub">(Total Payable Amount)</span>
-          </div>
-          <div className="total-banner-amount">
-            <span className="currency">Rs.</span>
-            <span className="value">{money(totalPayable)}</span>
+        {/* Milk Amount */}
+        <div className="text-right pr-1">
+          <div className="text-[10px] text-slate-500 font-bold">کل رقم دودھ:</div>
+          <div className="text-base font-black text-[#0c2e5e]">
+            <span className="font-mono text-lg">{money(milkAmount)}</span> <span className="text-xs font-urdu text-slate-600">روپے</span>
           </div>
         </div>
+      </div>
 
-        {/* 6. Urdu Rules & Bank Payment Instructions (Exact text from slip) */}
-        <div className="dark-slip-rules-card">
-          <div className="rules-item rule-warning">
-            <span className="rule-icon">⚠️</span>
-            <span className="rule-text">
-              بل ہر ماہ کی 5 تاریخ تک ادا کر دیں بصورت دیگر دودھ بند کر دیا جائے گا۔
-            </span>
+      {/* Box 5: PROMINENT TOTAL PAYABLE AQUA/CYAN BOX (کل قابل ادائیگی) */}
+      <div className="mt-2.5 p-3 rounded-2xl border-2 border-[#0284c7] bg-gradient-to-r from-[#e0f2fe] via-[#bae6fd] to-[#e0f2fe] shadow-md">
+        <div className="flex items-center justify-between">
+          <div className="w-11 h-11 rounded-full bg-white border-2 border-[#0284c7] flex items-center justify-center text-[#0284c7] shrink-0 shadow-sm">
+            <CheckCircle2 className="w-7 h-7 text-[#0284c7]" />
           </div>
-
-          <div className="rules-item rule-bank-intro">
-            <span className="rule-icon">💳</span>
-            <span className="rule-text">
-              آن لائن بل کی رقم ادا کرنے کے لیے میزان بینک میں رقم ٹرانسفر کریں۔
-            </span>
-          </div>
-
-          <div
-            className={`rules-item rule-bank-account ${onEditAccount ? 'cursor-pointer hover:bg-emerald-950/40 rounded-lg p-1 transition-colors' : ''}`}
-            onClick={onEditAccount}
-            title={onEditAccount ? 'اکاؤنٹ نمبر تبدیل کرنے کے لیے کلک کریں' : undefined}
-          >
-            <span className="rule-icon">🏦</span>
-            <div className="rule-text-block">
-              <span>{bankName} اکاؤنٹ نمبر: </span>
-              <span className="account-number-pill" dir="ltr">
-                {accountNumber}
-              </span>
-              <span> عنوان: <b>{accountTitle}</b></span>
-              <div className="rule-bank-warning">
-                اور اس کے علاوہ کسی بھی بینک اور جاز کیش میں رقم نہ بھیجیں اور بل کی رقم ٹرانسفر کرنے کے بعد سکرین شاٹ لازمی وٹس ایپ کریں۔
-                {onEditAccount && <span className="text-emerald-400 text-xs no-print"> [تبدیل کریں ✏️]</span>}
-              </div>
+          <div className="text-right">
+            <div className="text-xs font-black text-[#0c4a7e] font-urdu leading-tight">کل قابل ادائیگی:</div>
+            <div className="text-3xl font-black text-[#0c2e5e] tracking-tight leading-tight mt-0.5">
+              <span className="font-mono text-3xl font-black text-[#0c2e5e]">{money(totalPayable)}</span> <span className="text-lg text-[#0284c7] font-urdu mr-1">روپے</span>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className="rules-item rule-whatsapp">
-            <span className="rule-icon">📱</span>
-            <span className="rule-text">
-              آن لائن بل کا سکرین شاٹ <span className="whatsapp-highlight" dir="ltr">03204815221</span> اس نمبر پر وٹس ایپ کریں۔
-            </span>
+      {/* Box 6: Warning Banner */}
+      <div className="mt-2.5 px-3 py-2 rounded-xl border-2 border-[#0284c7] bg-white shadow-sm">
+        <div className="flex items-center gap-2">
+          <Megaphone className="w-4 h-4 text-[#0284c7] shrink-0" />
+          <p className="text-[11px] font-bold text-[#0c2e5e] font-urdu m-0 leading-normal">
+            بل ہر ماہ کی <span className="text-[#0284c7] font-black">5 تاریخ تک</span> ادا کریں، بصورت دیگر دودھ کی سپلائی بند کر دی جائے گی۔
+          </p>
+        </div>
+      </div>
+
+      {/* Box 7: Bank Details (faysalbank Logo Badge + Account Number) */}
+      <div
+        className={`mt-2 p-2.5 rounded-xl border-2 border-[#0284c7] bg-white flex items-center justify-between shadow-sm ${
+          onEditAccount ? 'cursor-pointer hover:bg-sky-50 transition-colors' : ''
+        }`}
+        onClick={onEditAccount}
+        title={onEditAccount ? 'بینک اکاؤنٹ تبدیل کرنے کے لیے کلک کریں' : undefined}
+      >
+        <div className="flex items-center gap-2 border-l-2 border-[#0284c7]/30 pl-2">
+          <div className="px-2.5 py-1 rounded-lg bg-[#0c4a7e] text-white text-xs font-black tracking-tight flex items-center gap-1.5 shadow-sm">
+            <span className="font-sans font-black text-sm tracking-tighter lowercase text-white">faysalbank</span>
+            <div className="w-4 h-4 rounded-sm bg-cyan-500 flex items-center justify-center text-[9px] font-urdu text-white font-bold">
+              فیصل
+            </div>
           </div>
         </div>
-
-        {/* 7. Footer Calligraphy "شکریہ! Thank You!" */}
-        <div className="dark-slip-footer">
-          <ThankYouScriptGraphic width={160} height={42} color="#10b981" />
-          <div className="footer-tagline">
-            خالص دودھ و تازہ دہی کا بااعتماد مرکز • تشریف لانے کا شکریہ!
+        <div className="text-right text-[11px]" dir="ltr">
+          <div className="font-mono text-[#0c2e5e] font-black text-sm">
+            <span className="text-slate-500 text-[10px] font-sans mr-1 font-normal">A/C:</span>
+            {accountNumber}
+          </div>
+          <div className="text-slate-700 text-[10px] font-bold mt-0.5 font-sans">
+            <span className="text-slate-500 mr-1 font-normal">Title:</span>
+            {accountTitle}
           </div>
         </div>
+      </div>
+
+      {/* Box 8: Online Transfer Note */}
+      <div className="mt-2 p-2 rounded-xl border-2 border-[#0284c7] bg-white flex items-center gap-2 shadow-sm">
+        <div className="w-8 h-8 rounded-lg bg-[#e0f2fe] border border-[#0284c7] flex items-center justify-center text-[#0284c7] shrink-0">
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current" strokeWidth="2">
+            <path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M15 10v11M12 2L2 7h20L12 2z" />
+          </svg>
+        </div>
+        <p className="text-[10px] text-slate-700 font-urdu leading-relaxed m-0">
+          آن لائن رقم کی ادائیگی کے لیے میزان بینک اکاؤنٹ میں رقم ٹرانسفر کریں۔ ادائیگی کی رسید اس نمبر <span className="text-[#0284c7] font-bold font-mono" dir="ltr">{contactPhone}</span> پر واٹس ایپ کریں۔
+        </p>
+      </div>
+
+      {/* Milk Splash Waves Graphic at Bottom */}
+      <div className="mt-3 pt-1 flex justify-center opacity-90">
+        <svg viewBox="0 0 300 24" className="w-full h-5 text-[#0284c7]" fill="currentColor">
+          <path d="M0 12 Q 25 24 50 12 T 100 12 T 150 12 T 200 12 T 250 12 T 300 12 V 24 H 0 Z" fill="#FFFFFF" fillOpacity="0.8" />
+          <path d="M0 16 Q 25 6 50 16 T 100 16 T 150 16 T 200 16 T 250 16 T 300 16 V 24 H 0 Z" fill="#0284c7" fillOpacity="0.5" />
+        </svg>
       </div>
     </div>
   );

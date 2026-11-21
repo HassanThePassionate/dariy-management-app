@@ -32,5 +32,6 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo [3/3] Starting Milk Shop Desktop Application...
 echo.
+set ELECTRON_RUN_AS_NODE=
 call npm run dev
 pause

@@ -13,6 +13,12 @@
     background-color: #030712;
     color: #f8fafc;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  html.theme-light body {
+    background-color: #f1f5f9;
+    color: #0f172a;
   }
 }
 
@@ -22,17 +28,30 @@
   height: 6px;
 }
 
-::-webkit-scrollbar-track {
+html.theme-dark ::-webkit-scrollbar-track {
   background: #050c1e;
 }
 
-::-webkit-scrollbar-thumb {
+html.theme-dark ::-webkit-scrollbar-thumb {
   background: #1e3a8a;
   border-radius: 9999px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+html.theme-dark ::-webkit-scrollbar-thumb:hover {
   background: #2563eb;
+}
+
+html.theme-light ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+
+html.theme-light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 /* RTL Urdu Font support */
@@ -64,125 +83,313 @@
 }
 
 /* ==========================================================================
-   GLOBAL DARK THEME TRANSFORMATIONS (Matches Screenshot Palette)
+   GLOBAL DARK THEME TRANSFORMATIONS (Only active when html.theme-dark)
+   Excludes .printable-bill and .excel-sheet so bills & Excel sheets stay crisp
    ========================================================================== */
 
-/* Cards, Panels & Modals */
-.bg-white:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-white:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #081028 !important;
   border-color: rgba(59, 130, 246, 0.22) !important;
   color: #f8fafc !important;
   box-shadow: 0 4px 25px rgba(0, 0, 0, 0.4) !important;
 }
 
-/* Inner containers and secondary backgrounds */
-.bg-slate-50:not(.printable-bill):not(.printable-bill *),
-.bg-slate-100:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-slate-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .bg-slate-100:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #0c163b !important;
   border-color: rgba(59, 130, 246, 0.25) !important;
   color: #f1f5f9 !important;
 }
 
-.bg-slate-200:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-slate-200:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #111e4f !important;
   border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
-/* Colored soft card backgrounds mapped to dark neon glass */
-.bg-blue-50:not(.printable-bill):not(.printable-bill *),
-.bg-\[\#f0f7ff\]:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-blue-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .bg-\[\#f0f7ff\]:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #0a1538 !important;
   border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
-.bg-emerald-50:not(.printable-bill):not(.printable-bill *),
-.bg-\[\#f0fdf4\]:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-emerald-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .bg-\[\#f0fdf4\]:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #061e1f !important;
   border-color: rgba(16, 185, 129, 0.3) !important;
 }
 
-.bg-amber-50:not(.printable-bill):not(.printable-bill *),
-.bg-\[\#fff7ed\]:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-amber-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .bg-\[\#fff7ed\]:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #21190a !important;
   border-color: rgba(245, 158, 11, 0.3) !important;
 }
 
-.bg-purple-50:not(.printable-bill):not(.printable-bill *),
-.bg-\[\#faf5ff\]:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-purple-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .bg-\[\#faf5ff\]:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #1b1030 !important;
   border-color: rgba(168, 85, 247, 0.3) !important;
 }
 
-.bg-rose-50:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .bg-rose-50:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   background-color: #260f17 !important;
   border-color: rgba(244, 63, 94, 0.3) !important;
 }
 
-/* Text Colors */
-.text-slate-900:not(.printable-bill):not(.printable-bill *),
-.text-slate-800:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .text-slate-900:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .text-slate-800:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   color: #ffffff !important;
 }
 
-.text-slate-700:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .text-slate-700:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   color: #e2e8f0 !important;
 }
 
-.text-slate-600:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .text-slate-600:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   color: #cbd5e1 !important;
 }
 
-.text-slate-500:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .text-slate-500:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   color: #94a3b8 !important;
 }
 
-.text-slate-400:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .text-slate-400:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   color: #64748b !important;
 }
 
-/* Border Overrides */
-.border-slate-100:not(.printable-bill):not(.printable-bill *),
-.border-slate-200:not(.printable-bill):not(.printable-bill *),
-.border-slate-200\/60:not(.printable-bill):not(.printable-bill *),
-.border-slate-200\/80:not(.printable-bill):not(.printable-bill *),
-.border-slate-300:not(.printable-bill):not(.printable-bill *) {
+html.theme-dark .border-slate-100:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .border-slate-200:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .border-slate-200\/60:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .border-slate-200\/80:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *),
+html.theme-dark .border-slate-300:not(.printable-bill):not(.printable-bill *):not(.excel-sheet):not(.excel-sheet *) {
   border-color: rgba(59, 130, 246, 0.2) !important;
 }
 
-/* Inputs, Selects, Textareas across all modal forms */
-input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *),
-select:not(.printable-bill *),
-textarea:not(.printable-bill *) {
+html.theme-dark input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *):not(.excel-sheet *),
+html.theme-dark select:not(.printable-bill *):not(.excel-sheet *),
+html.theme-dark textarea:not(.printable-bill *):not(.excel-sheet *) {
   background-color: #0c163b !important;
   border-color: rgba(59, 130, 246, 0.35) !important;
   color: #ffffff !important;
 }
 
-input::placeholder,
-textarea::placeholder {
+html.theme-dark input:not(.excel-sheet *)::placeholder,
+html.theme-dark textarea:not(.excel-sheet *)::placeholder {
   color: #64748b !important;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+html.theme-dark input:focus,
+html.theme-dark select:focus,
+html.theme-dark textarea:focus {
   border-color: #00d2ff !important;
   box-shadow: 0 0 12px rgba(0, 210, 255, 0.3) !important;
   outline: none !important;
 }
 
-/* Tables in all views */
-table thead th:not(.printable-bill *) {
+html.theme-dark table thead th:not(.printable-bill *):not(.excel-sheet *) {
   border-color: rgba(59, 130, 246, 0.2) !important;
   color: #94a3b8 !important;
 }
 
-table tbody tr:not(.printable-bill *) {
+html.theme-dark table tbody tr:not(.printable-bill *):not(.excel-sheet *) {
   border-color: rgba(59, 130, 246, 0.12) !important;
 }
 
-table tbody tr:hover:not(.printable-bill *) {
+html.theme-dark table tbody tr:hover:not(.printable-bill *):not(.excel-sheet *) {
   background-color: rgba(30, 64, 175, 0.15) !important;
+}
+
+/* ==========================================================================
+   GLOBAL LIGHT THEME TRANSFORMATIONS (Clean White & Slate when html.theme-light)
+   ========================================================================== */
+
+html.theme-light .bg-\[\#030712\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light .bg-\[\#050d24\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-\[\#060e28\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.theme-light .bg-\[\#081028\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.theme-light .bg-\[\#0b1437\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-\[\#0c163b\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-\[\#091438\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-\[\#0a1538\]:not(.printable-bill):not(.printable-bill *) {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.theme-light .bg-\[\#061e1f\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-emerald-950\/60:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-emerald-950\/40:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-emerald-950\/70:not(.printable-bill):not(.printable-bill *) {
+  background-color: #ecfdf5 !important;
+  border-color: #6ee7b7 !important;
+  color: #065f46 !important;
+}
+
+html.theme-light .bg-\[\#260f17\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-rose-950\/40:not(.printable-bill):not(.printable-bill *) {
+  background-color: #fff1f2 !important;
+  border-color: #fda4af !important;
+  color: #9f1239 !important;
+}
+
+html.theme-light .bg-\[\#21190a\]:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-amber-950\/80:not(.printable-bill):not(.printable-bill *) {
+  background-color: #fffbeb !important;
+  border-color: #fcd34d !important;
+  color: #92400e !important;
+}
+
+html.theme-light .bg-cyan-950\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-cyan-950\/40:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-cyan-500\/20:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-blue-950\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .bg-blue-600\/20:not(.printable-bill):not(.printable-bill *) {
+  background-color: #e0f2fe !important;
+  border-color: #7dd3fc !important;
+  color: #0369a1 !important;
+}
+
+html.theme-light .text-white:not(.printable-bill):not(.printable-bill *):not(button[class*="bg-gradient"]):not(button[class*="bg-emerald-6"]):not(button[class*="bg-blue-6"]):not(button[class*="bg-cyan-6"]):not(button[class*="bg-indigo-6"]):not(button[class*="bg-rose-6"]):not(button[class*="bg-brand-6"]):not(button[class*="bg-slate-7"]):not(button[class*="bg-amber-6"]) {
+  color: #0f172a !important;
+}
+
+html.theme-light .text-slate-100:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-slate-200:not(.printable-bill):not(.printable-bill *) {
+  color: #1e293b !important;
+}
+
+html.theme-light .text-slate-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-slate-400:not(.printable-bill):not(.printable-bill *) {
+  color: #475569 !important;
+}
+
+html.theme-light .text-cyan-200:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-cyan-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-cyan-300\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-cyan-400:not(.printable-bill):not(.printable-bill *) {
+  color: #0369a1 !important;
+}
+
+html.theme-light .text-blue-200:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-blue-200\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-blue-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-blue-400:not(.printable-bill):not(.printable-bill *) {
+  color: #1d4ed8 !important;
+}
+
+html.theme-light .text-emerald-200:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-emerald-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-emerald-300\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-emerald-400:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-emerald-400\/80:not(.printable-bill):not(.printable-bill *) {
+  color: #047857 !important;
+}
+
+html.theme-light .text-amber-200:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-amber-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-amber-300\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-amber-400:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-amber-400\/80:not(.printable-bill):not(.printable-bill *) {
+  color: #b45309 !important;
+}
+
+html.theme-light .text-rose-200:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-rose-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-rose-300\/80:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-rose-400:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-rose-400\/80:not(.printable-bill):not(.printable-bill *) {
+  color: #be123c !important;
+}
+
+html.theme-light .text-indigo-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-purple-300:not(.printable-bill):not(.printable-bill *),
+html.theme-light .text-teal-300:not(.printable-bill):not(.printable-bill *) {
+  color: #4338ca !important;
+}
+
+html.theme-light input:not([type="checkbox"]):not([type="radio"]):not(.printable-bill *):not(.excel-sheet *),
+html.theme-light select:not(.printable-bill *):not(.excel-sheet *),
+html.theme-light textarea:not(.printable-bill *):not(.excel-sheet *) {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.theme-light input:focus,
+html.theme-light select:focus,
+html.theme-light textarea:focus {
+  border-color: #0284c7 !important;
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+  outline: none !important;
+}
+
+/* ==========================================================================
+   ALWAYS-LIGHT CRISP WHITE EXCEL SPREADSHEET (Monthly Khata & Supplier Sheet)
+   Stays clean white even when the app is in Dark Mode!
+   ========================================================================== */
+
+.excel-sheet {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border: 2px solid #94a3b8 !important;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12) !important;
+}
+
+.excel-sheet table {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+.excel-sheet thead th {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-right: 1px solid #94a3b8 !important;
+  border-bottom: 2px solid #64748b !important;
+  font-weight: 800 !important;
+}
+
+.excel-sheet tbody td {
+  border-right: 1px solid #cbd5e1 !important;
+  border-bottom: 1px solid #cbd5e1 !important;
+}
+
+.excel-sheet tbody tr:nth-child(even) {
+  background-color: #f8fafc !important;
+}
+
+.excel-sheet tbody tr:hover {
+  background-color: #e0f2fe !important;
+}
+
+.excel-sheet tfoot td {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+  border-top: 2px solid #64748b !important;
+  border-right: 1px solid #94a3b8 !important;
+}
+
+.excel-sheet input {
+  color: #0f172a;
+}
+
+.excel-sheet input::placeholder {
+  color: #94a3b8 !important;
 }
 
 /* Print bill styling (Preserves clean physical receipt printing) */
