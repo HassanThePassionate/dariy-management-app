@@ -24,6 +24,7 @@ import {
   Filter,
   DollarSign,
   TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { useLanguage } from '../i18n/LanguageContext';
 import { DbInfo, DashboardStats } from '../types/electron';
@@ -164,6 +165,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   const isCurrentMonthSelected = selectedMonth === currentMonthKey;
 
+  // Monthly Financial Calculations for Profit & Loss
+  const monthlyRevenue = Number(stats.monthBilled || stats.monthSale || 0);
+  const monthlyPurchaseCost = Number(stats.monthPurchaseCost || 0);
+  const monthlyExpenses = Number(stats.monthExpenses || 0);
+  const totalMonthlyCost = monthlyPurchaseCost + monthlyExpenses;
+  const gheeProfit = Number(stats.gheeProfit || 0);
+  const netProfit = monthlyRevenue + gheeProfit - totalMonthlyCost;
+  const isProfit = netProfit >= 0;
+
   return (
     <div className="space-y-5 pb-12 max-w-7xl mx-auto text-slate-100 select-none">
       {/* 1. Header with SQLite Connection, Shop Branding, Rate, Date & Refresh Button (Matching Image 5) */}
@@ -298,13 +308,9 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           </div>
         </div>
 
-        {/* Card 2: TODAY'S REVENUE */}
+        {/* Card 2: TODAY'S REVENUE (Informational Only - No navigation on click) */}
         <div
-          onClick={() => onNavigate('daily-sale')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('daily-sale')}
-          className="bg-[#081028] border border-emerald-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] hover:border-emerald-400/70 hover:-translate-y-0.5 transition-all flex flex-col justify-between cursor-pointer"
+          className="bg-[#081028] border border-emerald-500/25 rounded-3xl p-5 shadow-[0_4px_25px_rgba(0,0,0,0.3)] flex flex-col justify-between cursor-default"
         >
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
@@ -319,8 +325,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
               Rs. {money(stats.todaySale || 0)}
             </div>
           </div>
-          <div className="text-[11px] text-emerald-300/80 font-medium">
-            Cash sales & deliveries
+          <div className="text-[11px] text-emerald-300/80 font-medium flex items-center justify-between flex-wrap gap-1">
+            <span>{ur ? 'نقد کاؤنٹر و ڈیلیوری' : 'Cash sales & deliveries'}</span>
+            <span className="text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded-lg border border-cyan-500/30">
+              {ur ? 'ماہانہ:' : 'Mo:'} Rs. {money(stats.monthBilled || 0)}
+            </span>
           </div>
         </div>
 
@@ -377,15 +386,79 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
         </div>
       </div>
 
-      {/* 4. Operations & Ledger Overview (6 Cards, Matching Image 5 in Dark Mode) */}
-      <div className="bg-[#081028] rounded-3xl border border-blue-500/20 p-5 shadow-[0_4px_25px_rgba(0,0,0,0.4)] space-y-3">
+      {/* 4. Operations & Ledger Overview (With Prominent Monthly Profit / Loss Banner) */}
+      <div className="bg-[#081028] rounded-3xl border border-blue-500/20 p-5 shadow-[0_4px_25px_rgba(0,0,0,0.4)] space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-black text-cyan-400 uppercase tracking-wider">
-            {ur ? `ماہانہ آپریشنز اور لیجر خلاصہ: ${monthDisplayLabel}` : `THIS MONTH OPERATIONS & LEDGER OVERVIEW`}
+            {ur ? `ماہانہ آپریشنز، مالی خلاصہ و لیجر: ${monthDisplayLabel}` : `THIS MONTH OPERATIONS, P&L & LEDGER OVERVIEW`}
           </h2>
           <span className="text-[11px] text-slate-400">
             {lastRefreshed ? `Synced: ${lastRefreshed}` : 'Live'}
           </span>
+        </div>
+
+        {/* Prominent Monthly Profit / Loss & Financial Health Widget */}
+        <div
+          className={`p-4 rounded-2xl border transition-all ${
+            isProfit
+              ? 'bg-gradient-to-r from-[#051c14] via-[#08281d] to-[#051c14] border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.12)]'
+              : 'bg-gradient-to-r from-[#240810] via-[#2f0b15] to-[#240810] border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.12)]'
+          }`}
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  isProfit
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
+                    : 'bg-rose-500/20 text-rose-400 border-rose-500/40 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                }`}
+              >
+                {isProfit ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+              </div>
+              <div>
+                <div className="text-xs font-black tracking-wider uppercase text-slate-300">
+                  {ur ? `ماہانہ تخمینہ نفع / نقصان (${monthDisplayLabel})` : `MONTHLY NET PROFIT / LOSS (${monthDisplayLabel})`}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`text-2xl font-black ${isProfit ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {isProfit ? `+ Rs. ${money(netProfit)}` : `- Rs. ${money(Math.abs(netProfit))}`}
+                  </span>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[11px] font-black border ${
+                      isProfit
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                    }`}
+                  >
+                    {isProfit
+                      ? (ur ? 'صافی منافع (Net Profit)' : 'NET PROFIT')
+                      : (ur ? 'صافی خسارہ (Net Loss)' : 'NET LOSS')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial breakdown pills */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="bg-[#081028]/80 border border-blue-500/20 rounded-xl px-3 py-2">
+                <span className="text-[10px] text-cyan-400 font-bold block">{ur ? 'ماہانہ کل آمدن' : 'Monthly Revenue'}</span>
+                <span className="text-sm font-black text-white">Rs. {money(monthlyRevenue)}</span>
+              </div>
+              <div className="bg-[#081028]/80 border border-blue-500/20 rounded-xl px-3 py-2">
+                <span className="text-[10px] text-slate-400 font-bold block">{ur ? 'دودھ خریداری لاگت' : 'Milk Purchase Cost'}</span>
+                <span className="text-sm font-black text-rose-300">Rs. {money(monthlyPurchaseCost)}</span>
+              </div>
+              <div className="bg-[#081028]/80 border border-blue-500/20 rounded-xl px-3 py-2">
+                <span className="text-[10px] text-amber-400 font-bold block">{ur ? 'ماہانہ اخراجات' : 'Monthly Expenses'}</span>
+                <span className="text-sm font-black text-amber-300">Rs. {money(monthlyExpenses)}</span>
+              </div>
+              <div className="bg-[#081028]/80 border border-blue-500/20 rounded-xl px-3 py-2">
+                <span className="text-[10px] text-emerald-400 font-bold block">{ur ? 'کیش وصولی' : 'Cash Collected'}</span>
+                <span className="text-sm font-black text-emerald-300">Rs. {money(stats.monthCollected || 0)}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -402,17 +475,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <div className="text-[10px] text-cyan-400">{qtyFmt(stats.totalMilk || 0)} Ltr • {ur ? 'کھولیں →' : 'Open →'}</div>
           </button>
 
-          {/* Card 2: Month Collected -> Monthly Khatta (Selected Month) */}
+          {/* Card 2: Month Collected -> All Records (Navigates to All Records) */}
           <button
             type="button"
-            onClick={() => onNavigate('monthly-khatta', selectedMonth)}
+            onClick={() => onNavigate('all-record')}
             className="text-left bg-[#061e1f] rounded-2xl p-3 border border-emerald-500/20 hover:border-emerald-400/70 hover:-translate-y-0.5 transition-all cursor-pointer"
           >
             <div className="text-[10px] font-bold text-emerald-400">{ur ? 'کل وصولی' : 'Month Collected'}</div>
             <div className="text-base font-black text-emerald-300 mt-1">
               Rs. {money(stats.monthCollected || 0)}
             </div>
-            <div className="text-[10px] text-emerald-400/80">{ur ? 'نقد و ٹرانسفر →' : 'Cash & Transfer →'}</div>
+            <div className="text-[10px] text-emerald-400/80">{ur ? 'تمام ریکارڈز دیکھیں →' : 'All Records →'}</div>
           </button>
 
           {/* Card 3: Supplier Milk (Today) -> Suppliers */}

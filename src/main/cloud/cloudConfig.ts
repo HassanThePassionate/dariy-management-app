@@ -1,4 +1,6 @@
 import { getDatabase } from '../db/database';
+import fs from 'fs';
+import path from 'path';
 
 export interface CloudConfig {
   apiUrl: string;
@@ -6,26 +8,42 @@ export interface CloudConfig {
   deviceId: string;
 }
 
+function readEnvUrl(): string {
+  try {
+    const candidates = [
+      path.join(process.cwd(), '.env'),
+      path.join(__dirname, '../../.env'),
+      path.join(__dirname, '../.env'),
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf8');
+        for (const line of content.split(/\r?\n/)) {
+          if (line.startsWith('CLOUD_API_URL=')) {
+            return line.substring('CLOUD_API_URL='.length).trim().replace(/^['"]|['"]$/g, '');
+          }
+        }
+      }
+    }
+  } catch {}
+  return '';
+}
+
 export function getCloudConfig(): CloudConfig {
   const db = getDatabase();
 
-  let url = process.env.CLOUD_API_URL || '';
-  let key = process.env.CLOUD_API_KEY || '';
-  let deviceId = process.env.APP_DEVICE_ID || 'dairy-desktop-pos-1';
+  let url = process.env.CLOUD_API_URL || readEnvUrl() || '';
+  let key = '';
+  let deviceId = 'dairy-desktop-terminal-1';
 
   try {
     const urlRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_api_url'").get() as any;
-    const keyRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_api_key'").get() as any;
-    const devRow = db.prepare("SELECT value FROM settings WHERE key = 'cloud_device_id'").get() as any;
-
     if (urlRow?.value) url = urlRow.value.trim();
-    if (keyRow?.value) key = keyRow.value.trim();
-    if (devRow?.value) deviceId = devRow.value.trim();
   } catch {}
 
-  // Default fallback if not set
+  // Production backend URL default fallback
   if (!url) {
-    url = 'http://localhost:3001';
+    url = 'https://dariy-backend.vercel.app';
   }
 
   // Remove trailing slashes
@@ -46,6 +64,4 @@ export function saveCloudConfig(config: { apiUrl?: string; apiKey?: string; devi
   `);
 
   if (config.apiUrl !== undefined) upsert.run('cloud_api_url', config.apiUrl.trim().replace(/\/+$/, ''));
-  if (config.apiKey !== undefined) upsert.run('cloud_api_key', config.apiKey.trim());
-  if (config.deviceId !== undefined) upsert.run('cloud_device_id', config.deviceId.trim());
 }

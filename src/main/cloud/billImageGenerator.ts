@@ -89,6 +89,13 @@ const sharedAquaStyles = `
   }
   .header { text-align: center; padding-bottom: 4px; }
   .bottle-wrap { display: flex; justify-content: center; margin-bottom: 4px; }
+  .top-logo-img {
+    height: 60px;
+    width: auto;
+    max-width: 125px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgba(2, 132, 199, 0.35));
+  }
   .shop-title {
     font-size: 26px;
     font-weight: 900;
@@ -331,6 +338,27 @@ const wavesSvg = `
   <path d="M0 16 Q 25 6 50 16 T 100 16 T 150 16 T 200 16 T 250 16 T 300 16 V 24 H 0 Z" fill="#0284c7" fill-opacity="0.45" />
 </svg>`;
 
+function getLogoImgHtml(shopTitle: string): string {
+  try {
+    const candidatePaths = [
+      path.join(app.getAppPath(), 'public', 'logo.png'),
+      path.join(process.resourcesPath || '', 'public', 'logo.png'),
+      path.join(process.resourcesPath || '', 'logo.png'),
+      path.join(__dirname, '..', '..', '..', 'public', 'logo.png'),
+      path.join(process.cwd(), 'public', 'logo.png'),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        const b64 = fs.readFileSync(p).toString('base64');
+        return `<img src="data:image/png;base64,${b64}" alt="${shopTitle}" class="top-logo-img" />`;
+      }
+    }
+  } catch (err) {
+    console.error('[billImageGenerator] Error loading logo image:', err);
+  }
+  return bottleSvg;
+}
+
 /**
  * Builds self-contained HTML for Aqua/Cyan Bill matching ModernBillCard.tsx
  */
@@ -365,7 +393,7 @@ function buildBillHtml(data: BillRenderData): string {
 <body>
   <div class="slip">
     <div class="header">
-      <div class="bottle-wrap">${bottleSvg}</div>
+      <div class="bottle-wrap">${getLogoImgHtml(shopTitle)}</div>
       <h1 class="shop-title">${shopTitle}</h1>
       <div class="owner-pill">${ownerName}</div>
     </div>
@@ -502,7 +530,7 @@ function buildReceiptHtml(data: ReceiptRenderData): string {
 <body>
   <div class="slip">
     <div class="header">
-      <div class="bottle-wrap">${bottleSvg}</div>
+      <div class="bottle-wrap">${getLogoImgHtml(shopTitle)}</div>
       <h1 class="shop-title">${shopTitle}</h1>
       <div class="owner-pill">${ownerName}</div>
       <div>

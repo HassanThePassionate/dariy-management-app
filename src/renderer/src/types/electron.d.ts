@@ -401,6 +401,8 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<{ success: boolean }>;
   getMonthlyRecords: () => Promise<MonthlyRecordCustomer[]>;
   setKhataPrevious: (p: { customerId: number; month: string; amount: number | null }) => Promise<{ success: boolean }>;
+  setKhataRate: (p: { customerId: number; month: string; rate: number }) => Promise<{ success: boolean; error?: string }>;
+  setKhataMonthLiters: (p: { customerId: number; month: string; liters: number }) => Promise<{ success: boolean; error?: string }>;
   getSuppliers: (month?: string) => Promise<SupplierItem[]>;
   addSupplier: (s: { name: string; phone?: string; address?: string; default_rate?: number }) => Promise<{ success: boolean; id?: number; error?: string }>;
   updateSupplier: (s: { id: number; name: string; phone?: string; address?: string; default_rate?: number }) => Promise<{ success: boolean; error?: string }>;

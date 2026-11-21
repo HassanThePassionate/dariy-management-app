@@ -79,59 +79,95 @@ export async function performCloudSync(): Promise<{
     const dailyStockRecords = db.prepare('SELECT * FROM daily_stock_records').all();
     const billSettings = db.prepare('SELECT * FROM bill_settings WHERE id = 1').get();
 
-    const payload = {
-      deviceId: config.deviceId,
-      lastSyncTimestamp: meta.lastSyncAt,
-      customers,
-      sales,
-      milkEntries,
-      customerMonthRates,
-      receivedPayments,
-      khataOpeningOverrides,
-      suppliers,
-      supplierPurchases,
-      supplierPayments,
-      expenses,
-      gheeTransactions,
-      shopperTransactions,
-      dailyStockRecords,
-      billSettings,
-    };
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout for sync batch
-
-    const response = await fetch(`${config.apiUrl}/api/sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.apiKey,
-        'x-device-id': config.deviceId,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    const data = await response.json();
-
-    if (!response.ok || !data.success) {
-      const err = data.error || `Sync failed with status ${response.status}`;
-      setLocalSyncMeta('last_sync_error', err);
-      return { success: false, error: err };
+    // Chunk milkEntries so serverless execution never hits Vercel timeouts
+    const chunkSize = 350;
+    const milkChunks: any[][] = [];
+    if (milkEntries.length > 0) {
+      for (let i = 0; i < milkEntries.length; i += chunkSize) {
+        milkChunks.push(milkEntries.slice(i, i + chunkSize));
+      }
+    } else {
+      milkChunks.push([]);
     }
 
-    // Update last sync timestamp on success
-    if (data.serverTimestamp) {
-      setLocalSyncMeta('last_synced_at', data.serverTimestamp);
+    let finalCounts = {
+      customers: 0,
+      sales: 0,
+      milkEntries: 0,
+      payments: 0,
+      expenses: 0,
+      suppliers: 0,
+      stock: 0,
+      ghee: 0,
+      shopper: 0,
+    };
+    let latestTimestamp = '';
+
+    for (let cIdx = 0; cIdx < milkChunks.length; cIdx++) {
+      const isFirst = cIdx === 0;
+      const subPayload = {
+        deviceId: config.deviceId,
+        lastSyncTimestamp: meta.lastSyncAt,
+        customers: isFirst ? customers : [],
+        sales: isFirst ? sales : [],
+        milkEntries: milkChunks[cIdx],
+        customerMonthRates: isFirst ? customerMonthRates : [],
+        receivedPayments: isFirst ? receivedPayments : [],
+        khataOpeningOverrides: isFirst ? khataOpeningOverrides : [],
+        suppliers: isFirst ? suppliers : [],
+        supplierPurchases: isFirst ? supplierPurchases : [],
+        supplierPayments: isFirst ? supplierPayments : [],
+        expenses: isFirst ? expenses : [],
+        gheeTransactions: isFirst ? gheeTransactions : [],
+        shopperTransactions: isFirst ? shopperTransactions : [],
+        dailyStockRecords: isFirst ? dailyStockRecords : [],
+        billSettings: isFirst ? billSettings : null,
+      };
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+
+      const response = await fetch(`${config.apiUrl}/api/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': config.apiKey,
+          'x-device-id': config.deviceId,
+        },
+        body: JSON.stringify(subPayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const err = data.error || `Sync failed with status ${response.status}`;
+        setLocalSyncMeta('last_sync_error', err);
+        return { success: false, error: err };
+      }
+
+      if (data.serverTimestamp) {
+        latestTimestamp = data.serverTimestamp;
+      }
+      if (data.counts) {
+        for (const [k, v] of Object.entries(data.counts)) {
+          if (k in finalCounts) (finalCounts as any)[k] += Number(v) || 0;
+        }
+      }
+    }
+
+    // Update last sync timestamp on complete success
+    if (latestTimestamp) {
+      setLocalSyncMeta('last_synced_at', latestTimestamp);
       setLocalSyncMeta('last_sync_error', '');
     }
 
     return {
       success: true,
-      counts: data.counts,
-      serverTimestamp: data.serverTimestamp,
+      counts: finalCounts,
+      serverTimestamp: latestTimestamp,
     };
   } catch (err: any) {
     const errorMsg = err.name === 'AbortError' ? 'Sync timed out' : err.message || 'Sync failed';

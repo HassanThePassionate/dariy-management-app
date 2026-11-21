@@ -3,7 +3,7 @@ import path from 'path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  outputFileTracingRoot: path.join(__dirname, '..'),
+  outputFileTracingRoot: path.join(__dirname),
   experimental: {
     serverActions: {
       bodySizeLimit: '50mb',
@@ -12,3 +12,5 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
+

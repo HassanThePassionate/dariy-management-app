@@ -34,9 +34,9 @@ export const CloudBackupSettings: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [connStatus, setConnStatus] = useState<CloudConnectionStatus | null>(null);
   const [config, setConfig] = useState<CloudConfig>({
-    apiUrl: 'http://localhost:3001',
+    apiUrl: 'https://dariy-backend.vercel.app',
     apiKey: '',
-    deviceId: 'dairy-desktop-pos-1',
+    deviceId: 'dairy-desktop-terminal-1',
   });
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const [configMsg, setConfigMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -478,39 +478,9 @@ export const CloudBackupSettings: React.FC = () => {
               type="text"
               value={config.apiUrl}
               onChange={(e) => setConfig((p) => ({ ...p, apiUrl: e.target.value }))}
-              placeholder="https://your-vercel-backend.vercel.app or http://localhost:3001"
+              placeholder="https://dariy-backend.vercel.app"
               className="w-full bg-[#050d24] border border-blue-500/20 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 font-mono"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-bold mb-1">
-                {ur ? 'کلاؤڈ API سیکیورٹی کی (CLOUD_API_KEY):' : 'Cloud API Key (Bearer Secret):'}
-              </label>
-              <div className="relative">
-                <input
-                  type="password"
-                  value={config.apiKey}
-                  onChange={(e) => setConfig((p) => ({ ...p, apiKey: e.target.value }))}
-                  placeholder="Enter secure API key"
-                  className="w-full bg-[#050d24] border border-blue-500/20 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 font-mono"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-slate-300 font-bold mb-1">
-                {ur ? 'ڈیوائس / ٹرمینل شناختی نام (APP_DEVICE_ID):' : 'Device / Terminal ID:'}
-              </label>
-              <input
-                type="text"
-                value={config.deviceId}
-                onChange={(e) => setConfig((p) => ({ ...p, deviceId: e.target.value }))}
-                placeholder="dairy-desktop-pos-1"
-                className="w-full bg-[#050d24] border border-blue-500/20 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-cyan-400 font-mono"
-              />
-            </div>
           </div>
 
           <div className="pt-2 flex justify-end">

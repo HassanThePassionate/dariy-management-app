@@ -117,6 +117,8 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<{ success: boolean }>;
   getMonthlyRecords: () => Promise<any[]>;
   setKhataPrevious: (p: { customerId: number; month: string; amount: number | null }) => Promise<{ success: boolean }>;
+  setKhataRate: (p: { customerId: number; month: string; rate: number }) => Promise<{ success: boolean; error?: string }>;
+  setKhataMonthLiters: (p: { customerId: number; month: string; liters: number }) => Promise<{ success: boolean; error?: string }>;
   getSuppliers: (month: string) => Promise<any[]>;
   addSupplier: (s: any) => Promise<{ success: boolean; id?: number; error?: string }>;
   updateSupplier: (s: any) => Promise<{ success: boolean; error?: string }>;
@@ -283,6 +285,8 @@ const api: ElectronAPI = {
   deleteKhataCustomerMonth: (payload) => ipcRenderer.invoke('khata:deleteCustomerMonth', payload),
   getMonthlyRecords: () => ipcRenderer.invoke('records:monthly'),
   setKhataPrevious: (p) => ipcRenderer.invoke('khata:setPrevious', p),
+  setKhataRate: (p) => ipcRenderer.invoke('khata:setRate', p),
+  setKhataMonthLiters: (p) => ipcRenderer.invoke('khata:setMonthLiters', p),
   getSuppliers: (month) => ipcRenderer.invoke('suppliers:list', month),
   addSupplier: (s) => ipcRenderer.invoke('suppliers:add', s),
   updateSupplier: (s) => ipcRenderer.invoke('suppliers:update', s),

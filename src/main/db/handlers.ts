@@ -831,6 +831,46 @@ export function registerIpcHandlers(): void {
     return { success: true };
   });
 
+  // Editable rate for a customer's specific month
+  ipcMain.handle('khata:setRate', async (_e, p: { customerId: number; month: string; rate: number }) => {
+    const db = getDatabase();
+    const rate = Number(p.rate);
+    if (!p.customerId || !p.month || !Number.isFinite(rate) || rate <= 0) {
+      return { success: false, error: 'Invalid rate or customer' };
+    }
+    db.prepare(`
+      INSERT INTO customer_month_rates (customer_id, month, rate)
+      VALUES (?, ?, ?)
+      ON CONFLICT(customer_id, month) DO UPDATE SET rate = excluded.rate
+    `).run(p.customerId, p.month, rate);
+    return { success: true };
+  });
+
+  // Editable total liters for a customer's specific month
+  ipcMain.handle('khata:setMonthLiters', async (_e, p: { customerId: number; month: string; liters: number }) => {
+    const db = getDatabase();
+    const liters = Number(p.liters);
+    if (!p.customerId || !p.month || !Number.isFinite(liters) || liters < 0) {
+      return { success: false, error: 'Invalid liters or customer' };
+    }
+    const existing = db.prepare('SELECT id, entry_date, quantity FROM milk_entries WHERE customer_id = ? AND entry_date LIKE ? ORDER BY entry_date ASC').all(p.customerId, `${p.month}-%`) as any[];
+    const currentTotal = existing.reduce((sum, e) => sum + (Number(e.quantity) || 0), 0);
+    const diff = liters - currentTotal;
+    if (Math.abs(diff) < 0.001) return { success: true };
+
+    if (existing.length === 0) {
+      db.prepare(`
+        INSERT INTO milk_entries (customer_id, entry_date, quantity)
+        VALUES (?, ?, ?)
+      `).run(p.customerId, `${p.month}-01`, liters);
+    } else {
+      const last = existing[existing.length - 1];
+      const newLastQty = Math.max(0, Number(last.quantity) + diff);
+      db.prepare('UPDATE milk_entries SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newLastQty, last.id);
+    }
+    return { success: true };
+  });
+
   // 10. Daily Expenses & Fleet
   ipcMain.handle('expenses:list', async (_e, month: string) => {
     const db = getDatabase();

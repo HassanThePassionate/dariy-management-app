@@ -1,5 +1,6 @@
 import React from 'react';
 import { Phone, FileText, CheckCircle2, Megaphone, Coins } from 'lucide-react';
+import logoUrl from '../assets/logo.png';
 
 export interface ModernReceiptCardProps {
   receiptNumber?: string;
@@ -97,18 +98,15 @@ export const ModernReceiptCard: React.FC<ModernReceiptCardProps> = ({
         fontVariantNumeric: 'tabular-nums',
       }}
     >
-      {/* Top Header Splash: Bottle Graphic + Shop Title & Owner Badge */}
+      {/* Top Header Splash: Shop Official Logo + Shop Title & Owner Badge */}
       <div className="relative text-center pb-1">
-        {/* Milk Bottle Graphic with Glass Splash Effect */}
-        <div className="flex justify-center items-center gap-1.5 mb-1">
-          <div className="w-12 h-14 flex items-center justify-center">
-            <svg viewBox="0 0 64 64" className="w-12 h-12 filter drop-shadow-[0_2px_8px_rgba(2,132,199,0.35)]" fill="none">
-              <rect x="22" y="8" width="14" height="6" rx="2" fill="#E2E8F0" stroke="#0284c7" strokeWidth="1.5" />
-              <path d="M20 14h18l4 8v32a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V22l4-8z" fill="#FFFFFF" fillOpacity="0.95" stroke="#0284c7" strokeWidth="2" />
-              <path d="M22 28c4 3 12 3 14 0v24a2 2 0 0 1-2 2H22a2 2 0 0 1-2-2V28z" fill="#38bdf8" fillOpacity="0.35" />
-              <path d="M42 32h12l2 24a2 2 0 0 1-2 2H40a2 2 0 0 1-2-2l2-24h2z" fill="#FFFFFF" fillOpacity="0.95" stroke="#0284c7" strokeWidth="1.5" />
-            </svg>
-          </div>
+        {/* Shop Official Logo on Top */}
+        <div className="flex justify-center items-center mb-1">
+          <img
+            src={logoUrl}
+            alt={shopTitle}
+            className="h-16 w-auto max-w-[130px] object-contain select-none pointer-events-none filter drop-shadow-[0_2px_8px_rgba(2,132,199,0.35)]"
+          />
         </div>
 
         {/* Shop Name in Beautiful Bold Calligraphy Style */}
